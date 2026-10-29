@@ -43,8 +43,8 @@ MUTATIONS = [
     (
         "M2-precedence-reversed",
         "rules/joint_verdict.json",
-        '"verdict_precedence": ["BLOCK", "FAIL", "REVIEW", "INCOMPLETE", "PASS"]',
-        '"verdict_precedence": ["PASS", "INCOMPLETE", "REVIEW", "FAIL", "BLOCK"]',
+        '"verdict_precedence": ["BLOCK", "INCOMPLETE", "FAIL", "REVIEW", "PASS"]',
+        '"verdict_precedence": ["PASS", "REVIEW", "FAIL", "INCOMPLETE", "BLOCK"]',
     ),
     (
         "M2-rule-r8-disabled",
@@ -75,6 +75,18 @@ MUTATIONS = [
         "rules/joint_verdict.json",
         '{"field": "attack_covered", "op": "eq", "value": 0}',
         '{"field": "attack_covered", "op": "eq", "value": -1}',
+    ),
+    (
+        "M2-rule-r10-disabled",
+        "rules/joint_verdict.json",
+        '{"field": "output_evidence_regressed", "op": "eq", "value": true}',
+        '{"field": "output_evidence_regressed", "op": "eq", "value": false}',
+    ),
+    (
+        "M2-engine-regression-never-detected",
+        "rules/engine.py",
+        '            evidence["output_evidence_regressed"] = baseline_summary.exists()',
+        '            evidence["output_evidence_regressed"] = False',
     ),
     (
         "M4-redteam-schema-bounds-open",

@@ -33,11 +33,11 @@
 | 里程碑 | 状态 | 交付物 | 验收（已实测） |
 |---|---|---|---|
 | M1 契约层 | 完成 | `contracts/{run,tool-evidence,joint-verdict}.schema.json`、`contracts/jsonschema_mini.py`、`contracts/validate.py` | 删必填字段 / 坏 digest / 未声明字段 / 坏 rules_version / 坏 commit 五种篡改全部被拦下（`TestSchemaRejectsTampering`）；手改 `decision.verdict` 被 `validate.py` 抓出（`TestRealRuns`） |
-| M2 联合裁决层 | 完成 | `rules/joint_verdict.json`（R1–R8 + precedence）、`rules/engine.py` | 9 种证据组合各有判定（`TestDecisionCombos`）；`python3 contracts/validate.py --all` 对 3 个真实 run 全绿 |
+| M2 联合裁决层 | 完成 | `rules/joint_verdict.json`（R1–R10 + precedence）、`rules/engine.py` | 9 种证据组合各有判定（`TestDecisionCombos`）+ 540 个可行组合全枚举（`scripts/joint_decision_matrix.py`）；`contracts/validate.py --all` 对 3 个真实 run 全绿 |
 | M3 编排层 CI | 完成（本地 + GitHub Actions） | `.github/workflows/ci.yml`（`gates` 双 Python 腿 + `e2e-smoke`）、`scripts/mutation_control.py` | `gates` 不依赖上游；`e2e-smoke` 真跑 `run.py` 并断言产物合契约。本地 10/10 变异被抓 |
 | M4 接 agent-redteam | 完成 | `scripts/redteam_coverage.py`、`contracts/redteam.schema.json`、`reports/2026-10-28-redteam-coverage.md` | 12 向量 / 50 样本产出覆盖 + 不覆盖两张表；**覆盖率 1/50 = 2%**（负面结果，见报告） |
 
-配套的门禁自证：`scripts/mutation_control.py`，12 个变异全部被测试抓到（0 逃逸）。
+配套的门禁自证：`scripts/mutation_control.py`，14 个变异全部被测试抓到（0 逃逸）。
 
 **本次修掉的三个真 bug**
 
@@ -62,6 +62,8 @@
 | 三仓提交 | mcp-guard `13ae914`、auditable-llm-eval `f7e00d2`，**均已 push** | 两仓 CI 全绿（mcp-guard: ci + mutation-control；auditable: checks + release-validate + mutation-control） |
 | 敏感锚点 | mcp-guard 命中身份改为 `(规则 id, anchor)`，修掉"纯措辞改动判 BLOCK" | mcp-guard 测试 19 → 23；6 个探针全符合预期 |
 | M4 覆盖率 | `scripts/redteam_coverage.py` + `redteam.json` 契约 | 50 条样本 → 覆盖 1 / 不覆盖 49，**2%** |
+| 决策全组合 | `scripts/joint_decision_matrix.py`：11 维笛卡尔积 → 540 个可行组合 | 查出并修掉两个门禁绕过：`INCOMPLETE` 排序、`R10` 证据回退；删证据不变量 0 违反 |
+| 契约补 `scorer_version` | `run.py` 对评分器文件取哈希，`run.schema.json` 要求该字段 | `runs/*/meta.json` 现记 `scorer_version=62b240b797547d69` |
 
 ## 明确不做（本周不做，也不建议下周偷做）
 

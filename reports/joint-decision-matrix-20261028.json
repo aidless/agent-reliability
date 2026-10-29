@@ -1,0 +1,107 @@
+{
+ "generated_utc": "2026-10-29T05:36:51+00:00",
+ "rules_version": "1.0.0",
+ "rules_file_sha256_16": "abf703d18df64703",
+ "verdict_precedence": [
+  "BLOCK",
+  "INCOMPLETE",
+  "FAIL",
+  "REVIEW",
+  "PASS"
+ ],
+ "dimensions": {
+  "tool_flagged": [
+   0,
+   2
+  ],
+  "tool_drift_alerts": [
+   0,
+   1
+  ],
+  "drift_new": [
+   0,
+   1
+  ],
+  "drift_changed": [
+   0,
+   1
+  ],
+  "audit_present": [
+   true,
+   false
+  ],
+  "audit_rate_is_1": [
+   true,
+   false
+  ],
+  "audit_naive_all_green": [
+   true,
+   false,
+   null
+  ],
+  "audit_excluded": [
+   0,
+   1
+  ],
+  "baseline_had_audit": [
+   false,
+   true
+  ],
+  "attack": [
+   "none",
+   "some",
+   "zero"
+  ]
+ },
+ "combos_total_raw": 2304,
+ "combos_feasible": 540,
+ "combos_excluded_infeasible": 1764,
+ "verdict_counts": {
+  "PASS": 8,
+  "REVIEW": 88,
+  "FAIL": 72,
+  "INCOMPLETE": 12,
+  "BLOCK": 360
+ },
+ "rule_trigger_counts": {
+  "R9-attack-layer-expresses-nothing": 180,
+  "R6-audit-coverage-gap": 240,
+  "R3-false-green": 60,
+  "R7-audit-not-perfect": 240,
+  "R8-missing-evidence": 60,
+  "R10-output-evidence-regressed": 30,
+  "R5-drift": 432,
+  "R1-drift-with-hit-change": 324,
+  "R4-flagged-tools": 270,
+  "R2-false-green-over-untrusted-tools": 60
+ },
+ "naive_baseline": {
+  "baseline_pass": 240,
+  "demoted": 236,
+  "still_pass": 4,
+  "demote_rate": 0.9833,
+  "demoted_into": {
+   "REVIEW": 44,
+   "FAIL": 24,
+   "BLOCK": 168
+  }
+ },
+ "authoritative_baseline": {
+  "baseline_pass": 240,
+  "demoted": 232,
+  "still_pass": 8,
+  "demote_rate": 0.9667,
+  "demoted_into": {
+   "REVIEW": 88,
+   "BLOCK": 144
+  }
+ },
+ "joint_pass_vs_naive_fail": 4,
+ "joint_pass_vs_authoritative_fail": 0,
+ "evidence_deletion": {
+  "violations": 0,
+  "examples": [],
+  "unavoidable_without_baseline": 12
+ },
+ "combos_tsv": "joint-decision-matrix-20261028.tsv"
+}

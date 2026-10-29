@@ -12,10 +12,10 @@
     "note": "flagged = 需要人工看，不等于判定为恶意（mcp-guard 的诚实性约束）"
   },
   "decision": {
-    "verdict": "REVIEW",
-    "severity": "review",
-    "rule_id": "R4-flagged-tools",
-    "why": "工具面有命中：需要人工复核工具定义。mcp-guard 的规则是词法启发式，命中只表示「值得看一眼」，不等于判定为恶意。",
+    "verdict": "INCOMPLETE",
+    "severity": "incomplete",
+    "rule_id": "R8-missing-evidence",
+    "why": "缺少某一层必需证据，无法给出联合结论——此时「没发现问题」和「没查」必须区分开。",
     "matched_rules": [
       {
         "id": "R4-flagged-tools",
@@ -54,6 +54,7 @@
       "audit_naive_green": "",
       "audit_unsupported_claims": 0,
       "missing_evidence_count": 1,
+      "output_evidence_regressed": false,
       "attack_sim_present": true,
       "attack_samples": 50,
       "attack_covered": 1,

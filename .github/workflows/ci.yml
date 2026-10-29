@@ -57,7 +57,7 @@ jobs:
         run: python scripts/mutation_control.py
 
   e2e-smoke:
-    name: e2e-smoke (upstream main)
+    name: e2e-smoke (pinned to recorded commits)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -65,19 +65,37 @@ jobs:
         with:
           path: platform
 
+      # 钉到 runs/ 里记录的 commit——而不是跟着上游 main 走。
+      # 这样这个 job 断言的是"记录的产物可以复现"，上游改了也不会误报红。
+      - name: 读出产物里记录的上游 commit
+        id: pin
+        working-directory: platform
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          meta = json.load(open("runs/20261028-r2-joint/meta.json"))
+          rt = json.load(open("runs/20261028-r2-joint/redteam.json"))
+          print("mcp_guard=" + meta["repos"]["mcp-guard"]["commit"])
+          print("auditable=" + meta["repos"]["auditable-llm-eval"]["commit"])
+          print("redteam=" + rt["redteam_commit"])
+          PY
+
       - uses: actions/checkout@v4
         with:
           repository: aidless/mcp-guard
+          ref: ${{ steps.pin.outputs.mcp_guard }}
           path: _deps/mcp-guard
 
       - uses: actions/checkout@v4
         with:
           repository: aidless/auditable-llm-eval
+          ref: ${{ steps.pin.outputs.auditable }}
           path: _deps/auditable-llm-eval
 
       - uses: actions/checkout@v4
         with:
           repository: aidless/agent-redteam
+          ref: ${{ steps.pin.outputs.redteam }}
           path: _deps/agent-redteam
 
       - uses: actions/setup-python@v5
@@ -137,4 +155,37 @@ jobs:
 
           print("e2e OK:", [(d["verdict"], d["rule_id"]) for d in (r1, r2, r3)])
           print("redteam coverage:", f"{rt['covered']}/{rt['total_samples']}")
+          PY
+
+  # 非阻塞告警：上游 main 的规则包变了，说明 runs/ 里的产物已经过期。
+  # 这个 job 红掉不影响 CI 结论，只是提醒"该重跑三连跑了"。
+  upstream-drift:
+    name: upstream-drift (non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: platform
+
+      - uses: actions/checkout@v4
+        with:
+          repository: aidless/mcp-guard
+          path: _deps/mcp-guard
+
+      - name: 上游规则包是否已改变
+        working-directory: platform
+        run: |
+          python - <<'PY'
+          import hashlib, json, pathlib, sys
+          recorded = json.load(open("runs/20261028-r2-joint/meta.json"))["rules_version"]
+          actual = hashlib.sha256(
+              pathlib.Path("../_deps/mcp-guard/guard/rules.py").read_bytes()
+          ).hexdigest()[:16]
+          print(f"recorded={recorded} actual={actual} same={recorded == actual}")
+          if recorded != actual:
+              print("::warning title=上游规则包已变化::runs/ 里的产物已过期，"
+                    "按 baseline.md 重跑三连跑并更新 meta.json")
+              sys.exit(1)
           PY

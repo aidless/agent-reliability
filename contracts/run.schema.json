@@ -2,9 +2,9 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/aidless/agent-reliability/contracts/run.schema.json",
   "title": "run meta",
-  "description": "runs/<run_id>/meta.json —— 一次运行的契约层：run_id / rules_version / tool_digests，以及两个被编排仓的 commit。",
+  "description": "runs/<run_id>/meta.json —— 一次运行的契约层：run_id / rules_version / scorer_version / tool_digests，以及两个被编排仓的 commit。",
   "type": "object",
-  "required": ["run_id", "created_utc", "rules_version", "tool_digests", "repos"],
+  "required": ["run_id", "created_utc", "rules_version", "scorer_version", "tool_digests", "repos"],
   "additionalProperties": false,
   "properties": {
     "run_id": {
@@ -21,6 +21,11 @@
       "type": "string",
       "pattern": "^[0-9a-f]{16}$",
       "description": "规则包内容 sha256 的前 16 位。规则变了它就变。"
+    },
+    "scorer_version": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$|^unknown$",
+      "description": "评分器（copilot/score_copilot_run_v2.py）内容 sha256 的前 16 位。否则「模型变了」和「判分标准变了」无法区分。"
     },
     "tool_digests": {
       "type": "object",

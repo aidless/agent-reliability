@@ -47,6 +47,7 @@ def derive_evidence(run_dir: pathlib.Path, rules: dict | None = None) -> dict:
         "audit_naive_green": "",
         "audit_unsupported_claims": 0,
         "missing_evidence_count": 0,
+        "output_evidence_regressed": False,
         "attack_sim_present": False,
         "attack_samples": 0,
         "attack_covered": 0,
@@ -119,6 +120,17 @@ def derive_evidence(run_dir: pathlib.Path, rules: dict | None = None) -> dict:
     required = rules.get("required_layers", ["input_guard", "output_audit"])
     missing = [m for m in missing if m in required]
     evidence["missing_evidence_count"] = len(missing)
+
+    # 证据回退：上一轮有输出面、这一轮没有 —— 不是"没跑"，是证据消失了。
+    # 删掉 audit/ 会连带消掉依赖它的判据（例如 R2 的假绿 BLOCK），
+    # 所以"消失"本身必须是一个独立信号，否则门禁可以被删文件绕过。
+    if "output_audit" in missing and tools_path.exists():
+        baseline_run = (json.loads(tools_path.read_text(encoding="utf-8"))
+                        .get("baseline_run"))
+        if baseline_run:
+            baseline_summary = run_dir.parent / baseline_run / "audit" / "summary.json"
+            evidence["output_evidence_regressed"] = baseline_summary.exists()
+
     evidence["tool_clean"] = (evidence["tool_flagged"] == 0 and evidence["tool_drift_alerts"] == 0)
     evidence["_missing_evidence"] = missing
     return evidence

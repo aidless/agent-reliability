@@ -55,6 +55,7 @@ def valid_meta() -> dict:
         "run_id": "test-run",
         "created_utc": "2026-10-28T12:00:00+00:00",
         "rules_version": "0123456789abcdef",
+        "scorer_version": "fedcba9876543210",
         "tool_digests": {"get_weather": "d" * 64},
         "repos": {
             "mcp-guard": {"path": "/tmp/mcp-guard", "commit": "a" * 40},
@@ -161,6 +162,7 @@ def evidence(**over) -> dict:
         "audit_naive_green": "3/3",
         "audit_unsupported_claims": 0,
         "missing_evidence_count": 0,
+        "output_evidence_regressed": False,
         "attack_sim_present": False,
         "attack_samples": 0,
         "attack_covered": 0,
@@ -229,7 +231,9 @@ class TestRulesContract(unittest.TestCase):
         """precedence 必须从最严重排到最轻，引擎取第一个命中即为最严重者。"""
         prec = self.rules["verdict_precedence"]
         self.assertEqual(len(prec), len(set(prec)), "verdict_precedence 里有重复")
-        order = {"PASS": 0, "INCOMPLETE": 1, "REVIEW": 2, "FAIL": 3, "BLOCK": 4}
+        # INCOMPLETE 排在 FAIL 之上：删掉证据不能把 FAIL 变轻（否则门禁可被
+        # "删输出面文件"绕过），但 BLOCK 仍然最高。
+        order = {"PASS": 0, "REVIEW": 1, "FAIL": 2, "INCOMPLETE": 3, "BLOCK": 4}
         vals = [order[v] for v in prec]
         self.assertEqual(vals, sorted(vals, reverse=True),
                          f"verdict_precedence 必须从最严重排到最轻：{prec}")
@@ -354,15 +358,113 @@ class TestDecisionCombos(unittest.TestCase):
         self.assertEqual(d["verdict"], "BLOCK")
 
     def test_missing_evidence_survives_alongside_other_rules(self):
-        """缺输出层 + 工具被 flag：REVIEW 更严重所以取它，但 R8 不能被吞掉。"""
+        """缺输出层 + 工具被 flag：INCOMPLETE 更严重，但 R4 不能被吞掉。"""
         d = self.decide(tool_flagged=2, tool_clean=False, audit_present=False,
                         audit_rate=None, audit_rate_is_1=False,
                         audit_naive_all_green=None, audit_naive_green="",
                         missing_evidence_count=1)
         ids = [m["id"] for m in d["matched_rules"]]
+        self.assertIn("R4-flagged-tools", ids)
         self.assertIn("R8-missing-evidence", ids)
-        self.assertEqual(d["verdict"], "REVIEW")
+        self.assertEqual(d["verdict"], "INCOMPLETE")
         self.assertEqual(d["missing_evidence"], ["output_audit"])
+
+    def test_deleting_output_evidence_never_lightens_the_verdict(self):
+        """删掉输出面不能把 FAIL 变轻——否则 {BLOCK, FAIL} 门禁可被"删文件"绕过。
+
+        这条不变量是 2026-10-28 用全组合枚举测出来的：当时 INCOMPLETE 排在
+        FAIL 之下，删掉 audit/ 就让 severity 3 → 1。
+        """
+        sev = {"PASS": 0, "REVIEW": 1, "FAIL": 2, "INCOMPLETE": 3, "BLOCK": 4}
+        with_audit = self.decide(audit_rate=0.6667, audit_rate_is_1=False,
+                                 audit_naive_all_green=False)
+        without_audit = self.decide(audit_present=False, audit_rate=None,
+                                    audit_rate_is_1=False,
+                                    audit_naive_all_green=None, audit_naive_green="",
+                                    missing_evidence_count=1)
+        self.assertEqual(with_audit["verdict"], "FAIL")
+        self.assertEqual(without_audit["verdict"], "INCOMPLETE")
+        self.assertGreaterEqual(
+            sev[without_audit["verdict"]], sev[with_audit["verdict"]],
+            "删掉输出面证据后裁决变轻了")
+
+    def test_output_evidence_regression_blocks(self):
+        """上一轮有输出面、这一轮没有 = 证据被删，必须 BLOCK。
+
+        没有这条时，删掉 audit/ 会连带消掉 R2（假绿 BLOCK），
+        裁决从 BLOCK 掉到 INCOMPLETE——门禁按 {BLOCK, FAIL} 判定就被绕过了。
+        """
+        d = self.decide(audit_present=False, audit_rate=None, audit_rate_is_1=False,
+                        audit_naive_all_green=None, audit_naive_green="",
+                        missing_evidence_count=1,
+                        output_evidence_regressed=True)
+        self.assertEqual(d["verdict"], "BLOCK")
+        self.assertEqual(d["rule_id"], "R10-output-evidence-regressed")
+        ids = [m["id"] for m in d["matched_rules"]]
+        self.assertIn("R8-missing-evidence", ids)
+
+    def test_evidence_regression_needs_a_baseline(self):
+        """没有基线时不能凭空判 R10——只在"上一轮有、这一轮没有"时才成立。"""
+        d = self.decide(audit_present=False, audit_rate=None, audit_rate_is_1=False,
+                        audit_naive_all_green=None, audit_naive_green="",
+                        missing_evidence_count=1,
+                        output_evidence_regressed=False)
+        self.assertEqual(d["verdict"], "INCOMPLETE")
+        self.assertEqual(d["rule_id"], "R8-missing-evidence")
+
+
+class TestEvidenceRegression(unittest.TestCase):
+    """证据回退的判定必须来自**真实目录**，不能只靠合成字段。
+
+    `derive_evidence` 会去看上一轮 run 里有没有 `audit/summary.json`；
+    这条路径只有构造出一对 run 目录才能覆盖（`M2-engine-regression-never-detected`
+    这个变异就是靠它被抓的）。
+    """
+
+    @staticmethod
+    def _tools_json(baseline_run: str | None) -> str:
+        return json.dumps({
+            "run_id": "cur",
+            "rules_version": "0" * 16,
+            "scanned": 0,
+            "flagged": 0,
+            "baseline_run": baseline_run,
+            "tools": [],
+        })
+
+    def test_missing_audit_after_a_baseline_that_had_one_is_a_regression(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runs = pathlib.Path(tmp)
+            base = runs / "base"
+            (base / "audit").mkdir(parents=True)
+            (base / "audit" / "summary.json").write_text("{}", encoding="utf-8")
+
+            cur = runs / "cur"
+            cur.mkdir()
+            (cur / "tools.json").write_text(self._tools_json("base"), encoding="utf-8")
+
+            ev = engine.derive_evidence(cur)
+            self.assertTrue(ev["output_evidence_regressed"])
+            self.assertEqual(ev["missing_evidence_count"], 1)
+
+    def test_missing_audit_without_such_a_baseline_is_not_a_regression(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runs = pathlib.Path(tmp)
+            base = runs / "base"
+            base.mkdir()                      # 基线自己也没有输出面
+            cur = runs / "cur"
+            cur.mkdir()
+            (cur / "tools.json").write_text(self._tools_json("base"), encoding="utf-8")
+            ev = engine.derive_evidence(cur)
+            self.assertFalse(ev["output_evidence_regressed"])
+
+    def test_first_run_has_no_regression(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cur = pathlib.Path(tmp) / "cur"
+            cur.mkdir()
+            (cur / "tools.json").write_text(self._tools_json(None), encoding="utf-8")
+            ev = engine.derive_evidence(cur)
+            self.assertFalse(ev["output_evidence_regressed"])
 
 
 class TestSchemaRejectsTampering(unittest.TestCase):
@@ -400,6 +502,12 @@ class TestSchemaRejectsTampering(unittest.TestCase):
         bad["rules_version"] = "NOTHEX"
         errs = schema_errors(bad, "run.schema.json")
         self.assertTrue(any("rules_version" in e for e in errs), errs)
+
+    def test_bad_scorer_version_is_rejected(self):
+        bad = valid_meta()
+        bad["scorer_version"] = "NOTHEX"
+        errs = schema_errors(bad, "run.schema.json")
+        self.assertTrue(any("scorer_version" in e for e in errs), errs)
 
     def test_bad_commit_is_rejected(self):
         bad = valid_meta()
@@ -523,9 +631,10 @@ class TestRealRuns(unittest.TestCase):
         self.assertEqual(jv["decision"]["evidence"]["tool_drift_changed_hits"], 1)
 
     def test_missing_output_layer_is_not_pass(self):
-        """r1 没有输出面证据：不能判成 PASS，缺哪层要写清楚。"""
+        """r1 没有输出面证据：判 INCOMPLETE，且缺哪层要写清楚。"""
         jv = self._joint("20261028-r1-baseline")
-        self.assertNotEqual(jv["decision"]["verdict"], "PASS")
+        self.assertEqual(jv["decision"]["verdict"], "INCOMPLETE")
+        self.assertEqual(jv["decision"]["rule_id"], "R8-missing-evidence")
         self.assertEqual(jv["decision"]["missing_evidence"], ["output_audit"])
         ids = [m["id"] for m in jv["decision"]["matched_rules"]]
         self.assertIn("R8-missing-evidence", ids)

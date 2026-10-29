@@ -18,9 +18,9 @@
 
 ```bash
 cd agent-reliability
-python3 -m unittest discover -s tests   # 42 passed
+python3 -m unittest discover -s tests   # 49 passed
 python3 contracts/validate.py --all     # 3 个 run 全过
-python3 scripts/mutation_control.py     # 12/12 变异被抓
+python3 scripts/mutation_control.py     # 14/14 变异被抓
 ```
 
 CI 有两个 job：`gates`（双 Python 腿，不依赖上游）与 `e2e-smoke`（checkout 三仓 main，
@@ -45,7 +45,7 @@ CI 有两个 job：`gates`（双 Python 腿，不依赖上游）与 `e2e-smoke`�
     ├── rules/                  # M2 联合裁决层：规则是数据，引擎只求值
     │   ├── joint_verdict.json         # R1–R8 八条规则 + verdict_precedence
     │   └── engine.py                  # derive_evidence / evaluate / decide
-    ├── tests/test_joint_verdict.py     # 42 个测试（契约 + 裁决 + 真实产物 + M4）
+    ├── tests/test_joint_verdict.py     # 49 个测试（契约 + 裁决 + 真实产物 + M4）
     ├── runs/                        # 每次运行的完整产物
     │   ├── 20261028-r1-baseline/    #   缺输出层 → REVIEW（缺证据 ≠ 通过）
     │   ├── 20261028-r2-joint/       #   假绿 → BLOCK（R2）
@@ -111,9 +111,9 @@ D7 提案里写的两条最小契约，现在已经落到可执行文件（**只
 
 **M2 联合裁决层**（`rules/`）
 
-- 判据是**数据**（`rules/joint_verdict.json` 的 R1–R8），引擎（`rules/engine.py`）
+- 判据是**数据**（`rules/joint_verdict.json` 的 R1–R10），引擎（`rules/engine.py`）
   只负责求值。改判据改 JSON，不改代码。
-- 分级：`BLOCK > FAIL > REVIEW > INCOMPLETE > PASS`。**全部命中的规则都记进
+- 分级：`BLOCK > INCOMPLETE > FAIL > REVIEW > PASS`。**全部命中的规则都记进
   `matched_rules`**，最终结论取最严重的那一个——"为什么不是 PASS"始终可追溯。
 - **缺证据 ≠ 通过**：缺必需证据层 → `INCOMPLETE`，与 `PASS` 严格分开。
 
@@ -124,6 +124,28 @@ D7 提案里写的两条最小契约，现在已经落到可执行文件（**只
 | 工具有命中 + 假绿 | `BLOCK` | R2 |
 | 工具干净 + 假绿 | `FAIL` | R3 |
 | 缺必需证据层 | `INCOMPLETE` | R8 |
+| 上一轮有输出面、这一轮没有 | `BLOCK` | R10 |
+
+**为什么 `INCOMPLETE` 排在 `FAIL` 之上**：删掉 `audit/` 目录会把 `FAIL` 变成
+`INCOMPLETE`。如果 `INCOMPLETE` 更轻，任何按 `{BLOCK, FAIL}` 判定的门禁都能被
+「删文件」绕过。这个漏洞是下面那张全组合表测出来的。
+
+### 决策函数的完整组合表
+
+`scripts/joint_decision_matrix.py` 把 11 个证据维度的笛卡尔积全枚举一遍：
+**2304 个原始组合 → 540 个可行组合**（内部矛盾的 1764 个被排除，排除 ≠ 通过）。
+
+    python3 scripts/joint_decision_matrix.py
+
+- 裁决分布：`BLOCK` 360 / `REVIEW` 88 / `FAIL` 72 / `INCOMPLETE` 12 / `PASS` 8
+- 只看 naive 会判 PASS 的 240 个组合里，联合层改判 **236 个（98.3%）**
+- 只看权威分会判 PASS 的 240 个组合里，联合层改判 **232 个（96.7%）**
+- 删证据不变量：有基线可比时违反 **0 对**；无基线不可知 12 对
+
+> 注意：这些百分比是**均匀枚举出来的状态空间占比**，不是现实发生率。
+> 网格里每个因子都按 50/50 或三等分取，所以"有漂移"占了一半——现实里远没有这么常见。
+> 它只能回答"决策函数覆盖了哪些状态"；现实发生率要靠真实 run 语料。
+> 详见 [`reports/2026-10-28-joint-decision-matrix.md`](./reports/2026-10-28-joint-decision-matrix.md)。
 
 ## M4：攻击剧本覆盖率（接 agent-redteam）
 
@@ -158,10 +180,11 @@ D7 提案里写的两条最小契约，现在已经落到可执行文件（**只
 
 | job | 跑什么 | 为什么要分开 |
 |---|---|---|
-| `gates` | 42 个平台测试 + `contracts/validate.py --all` + `scripts/mutation_control.py`（Python 3.10 与 3.12 两条腿） | **不依赖上游**：只读已提交的 `runs/` 产物，上游不可达或改了都不影响这一层 |
-| `e2e-smoke` | checkout 三仓 main（含 agent-redteam），真跑**三连跑**（r1 无基线 → r2 基线 r1 → r3 基线 r2），断言：缺层不判 `PASS`、假绿判 `BLOCK`、漂移换载荷由 `R1` 判 `BLOCK`、覆盖表落盘 | 证明**接线 + 漂移链 + M4** 都通；上游把锚点逻辑改坏，这里就会变红 |
+| `gates` | 49 个平台测试 + `contracts/validate.py --all` + `scripts/mutation_control.py`（Python 3.10 与 3.12 两条腿） | **不依赖上游**：只读已提交的 `runs/` 产物，上游不可达或改了都不影响这一层 |
+| `e2e-smoke` | 把三仓钉到 `runs/*/meta.json` 记录的 commit，真跑**三连跑**（r1 无基线 → r2 基线 r1 → r3 基线 r2），断言：缺层不判 `PASS`、假绿判 `BLOCK`、漂移换载荷由 `R1` 判 `BLOCK`、覆盖表落盘 | 证明**记录的产物可以复现**；因为钉了 ref，上游改代码不会误报红 |
+| `upstream-drift` | 拿上游 `main` 的 `guard/rules.py` 重算 `rules_version`，与产物里记的比 | **非阻塞告警**：红掉只说明 `runs/` 已过期，该重跑三连跑了 |
 
-变异自证是这套 CI 的重点：`scripts/mutation_control.py` 逐个注入 12 个变异
+变异自证是这套 CI 的重点：`scripts/mutation_control.py` 逐个注入 14 个变异
 （`$ref` 根文档、`additionalProperties`、digest pattern、precedence 顺序、R1/R2/R8
 停用、引擎只取首命中、引擎丢弃 `missing_evidence`、alarm 忽略载荷替换），每个都
 必须让测试变红。跑不过就说明那个"绿灯"是假的。

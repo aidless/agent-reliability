@@ -50,6 +50,12 @@ def sha256_file(path: pathlib.Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def file_version(path: pathlib.Path) -> str:
+    """文件内容 sha256 前 16 位；文件不存在时返回 unknown（不猜）。"""
+    p = pathlib.Path(path)
+    return sha256_file(p)[:16] if p.exists() else "unknown"
+
+
 def git_commit(repo: pathlib.Path) -> str:
     try:
         out = subprocess.run(
@@ -210,6 +216,8 @@ def main() -> int:
         "run_id": run_id,
         "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "rules_version": rules_version,
+        # 评分器也有自己的版本：否则"模型变了"和"判分标准变了"永远分不开。
+        "scorer_version": file_version(aud_repo / "copilot" / "score_copilot_run_v2.py"),
         "tool_digests": {r["name"]: r["digest"] for r in rows},
         "repos": {
             "mcp-guard": {"path": str(mcp_repo), "commit": git_commit(mcp_repo)},

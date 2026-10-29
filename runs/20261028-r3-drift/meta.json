@@ -1,7 +1,8 @@
 {
   "run_id": "20261028-r3-drift",
-  "created_utc": "2026-10-29T04:49:06+00:00",
+  "created_utc": "2026-10-29T05:27:10+00:00",
   "rules_version": "501094d9fde93626",
+  "scorer_version": "62b240b797547d69",
   "tool_digests": {
     "export_profile": "808dedfb3cf5339b112e60059c3cc0fe8f773e388f3257f7491f168c7c920762",
     "send_message": "41621b9a981c3111f411dea281e9ae8ef278f7666f63fefe2422aefef42eaeb0",

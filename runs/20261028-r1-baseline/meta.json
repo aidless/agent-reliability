@@ -1,7 +1,8 @@
 {
   "run_id": "20261028-r1-baseline",
-  "created_utc": "2026-10-29T04:49:06+00:00",
+  "created_utc": "2026-10-29T05:27:10+00:00",
   "rules_version": "501094d9fde93626",
+  "scorer_version": "62b240b797547d69",
   "tool_digests": {
     "export_profile": "808dedfb3cf5339b112e60059c3cc0fe8f773e388f3257f7491f168c7c920762",
     "send_message": "a914c5a026adbaf07e2a359266419d3b6d9bfe3fe553f1750e4f11b1cbc2e22f",
