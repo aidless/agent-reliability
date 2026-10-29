@@ -7,9 +7,9 @@
 - `~/mcp-guard` @ `08e3c9876c69e48ca384921ae976d47e614b6e42`（= 远端 main，未漂移）
 - `~/auditable-llm-eval` @ `11d8f3890441c785a5ceb60c0da8286d028760c2`（= 远端 main）
 
-> **2026-10-28 晚**：两仓各追加了一笔本地提交（mcp-guard `56aac4d`、
-> auditable-llm-eval `f7e00d2`），**尚未 push**。上表保留 D1 采集时的状态作为历史；
-> 现在 `runs/*/meta.json` 记录的是这两笔新提交。
+> **2026-10-28 晚**：两仓各追加了提交（mcp-guard `56aac4d` → `13ae914`、
+> auditable-llm-eval `f7e00d2`），**均已 push 到 GitHub 的 main**。上表保留 D1
+> 采集时的状态作为历史；现在 `runs/*/meta.json` 记录的是 `13ae914` 与 `f7e00d2`。
 
 ## 每个数字 + 它的复算命令
 

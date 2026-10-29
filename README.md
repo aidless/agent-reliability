@@ -115,7 +115,7 @@ D7 提案里写的两条最小契约，现在已经落到可执行文件（**只
 | job | 跑什么 | 为什么要分开 |
 |---|---|---|
 | `gates` | 36 个平台测试 + `contracts/validate.py --all` + `scripts/mutation_control.py`（Python 3.10 与 3.12 两条腿） | **不依赖上游**：只读已提交的 `runs/` 产物，上游不可达或改了都不影响这一层 |
-| `e2e-smoke` | checkout `aidless/mcp-guard` 与 `aidless/auditable-llm-eval` 的 main，真跑一次 `run.py`；断言产物过契约、裁决是合法枚举 | 证明**接线**通。它**不断言具体裁决**——那取决于上游那一刻的代码 |
+| `e2e-smoke` | checkout 两仓 main，真跑**三连跑**（r1 无基线 → r2 基线 r1 → r3 基线 r2），断言：缺层不判 `PASS`、假绿判 `BLOCK`、漂移换载荷由 `R1` 判 `BLOCK` | 证明**接线 + 漂移链**都通；上游把锚点逻辑改坏，这里就会变红 |
 
 变异自证是这套 CI 的重点：`scripts/mutation_control.py` 逐个注入 10 个变异
 （`$ref` 根文档、`additionalProperties`、digest pattern、precedence 顺序、R1/R2/R8
@@ -126,10 +126,9 @@ D7 提案里写的两条最小契约，现在已经落到可执行文件（**只
 `INCOMPLETE`），手动触发 CI —— 两条 Python 腿都按预期变红，报的正是
 `'PASS' != 'INCOMPLETE'`。验证后分支已删除，main 保持全绿。
 
-> **溯源说明**：`runs/*/meta.json` 里的 `repos.*.commit` 记录的是**本地提交**
-> （mcp-guard `56aac4d`、auditable-llm-eval `f7e00d2`）。这两笔提交尚未 push 到
-> GitHub，所以 `e2e-smoke` 用的是上游 main，产物裁决可能与 `runs/` 里的不同。
-> push 之后按 `baseline.md` 的命令重跑一遍，两者即可对齐。
+> **溯源**：`runs/*/meta.json` 里 `repos.*.commit` 记的是**已推送**的
+> mcp-guard `13ae914` 与 auditable-llm-eval `f7e00d2`，在 GitHub 上可直接打开。
+> 从这两个 commit 的干净导出重跑三连跑，三个裁决可完全复现（命令见 `baseline.md`）。
 
 ## 三条要记住的边界
 
