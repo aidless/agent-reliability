@@ -122,6 +122,10 @@ D7 提案里写的两条最小契约，现在已经落到可执行文件（**只
 停用、引擎只取首命中、引擎丢弃 `missing_evidence`、alarm 忽略载荷替换），每个都
 必须让测试变红。跑不过就说明那个"绿灯"是假的。
 
+**门禁自证已实测**：另推一个临时分支，把 R8 阈值从 0 改成 99（缺证据不再判
+`INCOMPLETE`），手动触发 CI —— 两条 Python 腿都按预期变红，报的正是
+`'PASS' != 'INCOMPLETE'`。验证后分支已删除，main 保持全绿。
+
 > **溯源说明**：`runs/*/meta.json` 里的 `repos.*.commit` 记录的是**本地提交**
 > （mcp-guard `56aac4d`、auditable-llm-eval `f7e00d2`）。这两笔提交尚未 push 到
 > GitHub，所以 `e2e-smoke` 用的是上游 main，产物裁决可能与 `runs/` 里的不同。

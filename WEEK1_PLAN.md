@@ -57,7 +57,8 @@
 | 项 | 做了什么 | 验收 |
 |---|---|---|
 | `new_hits` 内容级差集 | mcp-guard `guard/drift.py` 命中身份改为 `(规则 id, 命中文本)` | mcp-guard 测试 19 passed；退回规则 id 级别的变异被抓（2 failed） |
-| 平台仓 + CI | 建 `aidless/agent-reliability`，`.github/workflows/ci.yml` 两个 job | 见 GitHub Actions 运行结果 |
+| 平台仓 + CI | 建 `aidless/agent-reliability`，`.github/workflows/ci.yml` 两个 job | main 上 [`run 40816361533`](https://github.com/aidless/agent-reliability/actions/runs/40816361533) 三个 job 全绿（gates 3.10 / gates 3.12 / e2e-smoke） |
+| CI 门禁自证 | 推一个临时分支，把 R8 阈值 0 → 99，手动 `workflow_dispatch` | [`run 40816581949`](https://github.com/aidless/agent-reliability/actions/runs/40816581949) **按预期失败**，两条腿都报 `'PASS' != 'INCOMPLETE'`；分支已删除 |
 | 两仓提交 | mcp-guard `56aac4d`、auditable-llm-eval `f7e00d2`（**未 push**） | 从两笔 commit 干净导出可完全复现三个裁决 |
 
 ## 明确不做（本周不做，也不建议下周偷做）
