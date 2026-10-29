@@ -1,7 +1,7 @@
 {
   "run_id": "20261028-r1-baseline",
-  "created_utc": "2026-10-29T04:02:11+00:00",
-  "rules_version": "97e6a7225384bf34",
+  "created_utc": "2026-10-29T04:39:28+00:00",
+  "rules_version": "501094d9fde93626",
   "tool_digests": {
     "export_profile": "808dedfb3cf5339b112e60059c3cc0fe8f773e388f3257f7491f168c7c920762",
     "send_message": "a914c5a026adbaf07e2a359266419d3b6d9bfe3fe553f1750e4f11b1cbc2e22f",
@@ -11,7 +11,7 @@
   "repos": {
     "mcp-guard": {
       "path": "/home/liuzewen/mcp-guard",
-      "commit": "56aac4d40eda67875b542c1e0ce6620fd1135655"
+      "commit": "13ae914f3e55644e2a0f70aed87746764ebf09f0"
     },
     "auditable-llm-eval": {
       "path": "/home/liuzewen/auditable-llm-eval",

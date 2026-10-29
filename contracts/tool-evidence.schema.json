@@ -36,6 +36,10 @@
                 "rule": {"type": "string", "minLength": 1},
                 "severity": {"type": "string", "enum": ["high", "medium", "low"]},
                 "match": {"type": "string"},
+                  "anchor": {
+                    "type": "string",
+                    "description": "命中身份：规则作者标的敏感锚点，或整段命中文本的 sha256 摘要"
+                  },
                 "why": {"type": "string"}
               }
             }
@@ -67,6 +71,7 @@
                   "properties": {
                     "rule": {"type": "string"},
                     "change": {"type": "string", "enum": ["added", "removed"]},
+                    "anchor": {"type": "string"},
                     "match": {"type": "string"}
                   }
                 }
