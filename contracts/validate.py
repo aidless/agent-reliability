@@ -9,6 +9,7 @@
   1. `meta.json`         对 `contracts/run.schema.json`
   2. `tools.json`        对 `contracts/tool-evidence.schema.json`
   3. `joint_verdict.json` 对 `contracts/joint-verdict.schema.json`
+     （可选：`redteam.json` 对 `contracts/redteam.schema.json`——没跑攻击剧本就没有）
   4. **重算**联合裁决并与文件里存的那份逐字段比对——手改过的裁决、或
      产物与裁决不同步，都会被抓出来。
 
@@ -28,10 +29,12 @@ sys.path.insert(0, str(ROOT / "rules"))
 from jsonschema_mini import validate  # noqa: E402
 import engine  # noqa: E402
 
+# 文件名 -> (schema, 是否可选)
 SCHEMAS = {
-    "meta.json": "run.schema.json",
-    "tools.json": "tool-evidence.schema.json",
-    "joint_verdict.json": "joint-verdict.schema.json",
+    "meta.json": ("run.schema.json", False),
+    "tools.json": ("tool-evidence.schema.json", False),
+    "joint_verdict.json": ("joint-verdict.schema.json", False),
+    "redteam.json": ("redteam.schema.json", True),
 }
 
 
@@ -39,11 +42,12 @@ def check_run(run_dir: pathlib.Path) -> list[str]:
     problems: list[str] = []
     run_dir = pathlib.Path(run_dir)
 
-    for filename, schema_name in SCHEMAS.items():
+    for filename, (schema_name, optional) in SCHEMAS.items():
         path = run_dir / filename
         schema = json.loads((HERE / schema_name).read_text(encoding="utf-8"))
         if not path.exists():
-            problems.append(f"{run_dir.name}/{filename}: 文件不存在")
+            if not optional:
+                problems.append(f"{run_dir.name}/{filename}: 文件不存在")
             continue
         try:
             instance = json.loads(path.read_text(encoding="utf-8"))

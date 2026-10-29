@@ -95,7 +95,10 @@
       "audit_naive_green": "3/3",
       "audit_unsupported_claims": 1,
       "missing_evidence_count": 0,
-      "attack_sim_present": false
+      "attack_sim_present": true,
+      "attack_samples": 50,
+      "attack_covered": 1,
+      "attack_uncovered": 49
     },
     "missing_evidence": [],
     "rules_version": "501094d9fde93626"

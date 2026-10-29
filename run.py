@@ -117,6 +117,8 @@ def main() -> int:
                     help="显式指定漂移基线 run id（默认取 created_utc 最新的那次）")
     ap.add_argument("--no-baseline", action="store_true",
                     help="不做漂移比对（重建链首的 run 时用）")
+    ap.add_argument("--redteam-repo", default=None,
+                    help="aidless/agent-redteam 的 checkout（给了才跑攻击剧本覆盖表）")
     ap.add_argument("--mcp-guard-repo", default=DEFAULT_MCP_GUARD)
     ap.add_argument("--auditable-repo", default=DEFAULT_AUDITABLE)
     args_ = ap.parse_args()
@@ -217,6 +219,34 @@ def main() -> int:
     }
     (run_dir / "meta.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # ---------- L2（可选）：攻击剧本覆盖 ----------
+    if args_.redteam_repo:
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from redteam_coverage import build_report  # noqa: E402
+
+        coverage = build_report(pathlib.Path(args_.redteam_repo), mcp_repo)
+        (run_dir / "redteam.json").write_text(
+            json.dumps({
+                "run_id": run_id,
+                "redteam_commit": coverage["redteam_commit"],
+                "dataset_version": coverage["dataset_version"],
+                "dataset_license": coverage["dataset_license"],
+                "total_samples": coverage["total_samples"],
+                "covered": coverage["covered"],
+                "uncovered": coverage["uncovered"],
+                "coverage_rate": coverage["coverage_rate"],
+                "interpretation": coverage["interpretation"],
+                "by_vector": coverage["by_vector"],
+                # 只留判定所需字段：不把上游 Apache-2.0 的载荷复制进本仓
+                "samples": [
+                    {k: s[k] for k in
+                     ("sample_id", "vector_id", "covered", "rules", "anchors")}
+                    for s in coverage["samples"]
+                ],
+            }, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
     joint = {
         "run_id": run_id,

@@ -113,6 +113,31 @@ def valid_joint() -> dict:
     }
 
 
+def valid_redteam() -> dict:
+    """一份满足 redteam.schema.json 的覆盖率表。"""
+    return {
+        "run_id": "test-run",
+        "redteam_commit": "e" * 40,
+        "dataset_version": "0.1.0",
+        "dataset_license": "Apache 2.0",
+        "total_samples": 2,
+        "covered": 1,
+        "uncovered": 1,
+        "coverage_rate": 0.5,
+        "interpretation": "覆盖 = 该载荷若出现在工具描述里会被规则命中。",
+        "by_vector": [
+            {"vector_id": "V01", "vector_name": "x", "category": "input_attack",
+             "samples": 2, "covered": 1, "rate": 0.5},
+        ],
+        "samples": [
+            {"sample_id": "V01_001", "vector_id": "V01", "covered": True,
+             "rules": ["secret-read"], "anchors": ["ssh"]},
+            {"sample_id": "V01_002", "vector_id": "V01", "covered": False,
+             "rules": [], "anchors": []},
+        ],
+    }
+
+
 def evidence(**over) -> dict:
     """基准证据：工具面干净 + 输出面满分。用关键字参数改写需要变化的字段。"""
     base = {
@@ -137,6 +162,9 @@ def evidence(**over) -> dict:
         "audit_unsupported_claims": 0,
         "missing_evidence_count": 0,
         "attack_sim_present": False,
+        "attack_samples": 0,
+        "attack_covered": 0,
+        "attack_uncovered": 0,
     }
     base.update(over)
     # 与 derive_evidence 同一条规则：alarm 由 new_hits / changed_hits 推出来。
@@ -282,6 +310,26 @@ class TestDecisionCombos(unittest.TestCase):
         self.assertEqual(d["verdict"], "REVIEW")
         self.assertEqual(d["rule_id"], "R6-audit-coverage-gap")
 
+    def test_attack_layer_expressing_nothing_reviews(self):
+        """跑过剧本但一条都表达不了：不能拿这一层的"干净"当"攻击已被覆盖"。"""
+        d = self.decide(attack_sim_present=True, attack_samples=50,
+                        attack_covered=0, attack_uncovered=50)
+        self.assertEqual(d["verdict"], "REVIEW")
+        self.assertEqual(d["rule_id"], "R9-attack-layer-expresses-nothing")
+
+    def test_attack_layer_with_some_coverage_does_not_review(self):
+        """有覆盖就不触发 R9——覆盖率低本身是常数事实，不该每次 run 都报警。"""
+        d = self.decide(attack_sim_present=True, attack_samples=50,
+                        attack_covered=1, attack_uncovered=49)
+        self.assertEqual(d["verdict"], "PASS")
+        self.assertIsNone(d["rule_id"])
+
+    def test_missing_attack_layer_is_not_incomplete(self):
+        """攻击剧本是可选层：没跑不该判 INCOMPLETE。"""
+        d = self.decide(attack_sim_present=False)
+        self.assertEqual(d["verdict"], "PASS")
+        self.assertEqual(d["missing_evidence"], [])
+
     def test_all_matched_rules_are_reported(self):
         """全部命中的规则都要上报——"为什么不是 PASS"必须可追溯。"""
         d = self.decide(tool_flagged=2, tool_clean=False,
@@ -325,6 +373,7 @@ class TestSchemaRejectsTampering(unittest.TestCase):
         self.assertEqual(schema_errors(valid_meta(), "run.schema.json"), [])
         self.assertEqual(schema_errors(valid_tools(), "tool-evidence.schema.json"), [])
         self.assertEqual(schema_errors(valid_joint(), "joint-verdict.schema.json"), [])
+        self.assertEqual(schema_errors(valid_redteam(), "redteam.schema.json"), [])
 
     def test_missing_required_field_is_rejected(self):
         bad = valid_meta()
@@ -369,6 +418,18 @@ class TestSchemaRejectsTampering(unittest.TestCase):
         del bad["decision"]["matched_rules"]
         errs = schema_errors(bad, "joint-verdict.schema.json")
         self.assertTrue(any("matched_rules" in e for e in errs), errs)
+
+    def test_impossible_coverage_rate_is_rejected(self):
+        bad = valid_redteam()
+        bad["coverage_rate"] = 1.5
+        errs = schema_errors(bad, "redteam.schema.json")
+        self.assertTrue(any("coverage_rate" in e for e in errs), errs)
+
+    def test_redteam_missing_commit_is_rejected(self):
+        bad = valid_redteam()
+        del bad["redteam_commit"]
+        errs = schema_errors(bad, "redteam.schema.json")
+        self.assertTrue(any("redteam_commit" in e for e in errs), errs)
 
 
 class TestSchemaCrossValidation(unittest.TestCase):
@@ -468,6 +529,23 @@ class TestRealRuns(unittest.TestCase):
         self.assertEqual(jv["decision"]["missing_evidence"], ["output_audit"])
         ids = [m["id"] for m in jv["decision"]["matched_rules"]]
         self.assertIn("R8-missing-evidence", ids)
+
+    def test_redteam_coverage_is_recorded(self):
+        """M4：跑过攻击剧本时，覆盖率必须落在产物里，且被标为"可表达"。"""
+        run = RUNS / "20261028-r2-joint"
+        path = run / "redteam.json"
+        self.assertTrue(path.exists(), "缺少 redteam.json")
+        rt = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(rt["total_samples"], len(rt["samples"]))
+        self.assertEqual(rt["covered"] + rt["uncovered"], rt["total_samples"])
+        self.assertEqual(len(rt["by_vector"]), 12)
+        self.assertRegex(rt["redteam_commit"], r"^[0-9a-f]{40}$")
+
+        jv = self._joint("20261028-r2-joint")
+        e = jv["decision"]["evidence"]
+        self.assertTrue(e["attack_sim_present"])
+        self.assertEqual(e["attack_samples"], rt["total_samples"])
+        self.assertEqual(e["attack_covered"], rt["covered"])
 
     def test_tampered_decision_is_caught(self):
         """手改 verdict 放水，必须被 validate.py 抓出来。"""

@@ -1,10 +1,30 @@
-# agent-reliability — 把两个仓接成一条 Agent 可靠性链路
+# agent-reliability
 
-> 这是 2026-10-28 一次只读审计之后的落地目录。两个被审计的仓库在本目录下**没有被改动**；
-> 后续改动都是经你授权后，在各自的 checkout 里单独做的。
->
-> - `aidless/mcp-guard` → 输入面：工具定义是否被投毒、是否发生了 rug pull
-> - `aidless/auditable-llm-eval` → 输出面：结论是否"假绿"、是否过度宣称
+**把两个评测仓接成一条可复算的联合裁决链路。** 全离线、零模型调用、零 API key、
+零第三方运行时依赖。
+
+- 工具面 [`aidless/mcp-guard`](https://github.com/aidless/mcp-guard)：工具定义有没有被投毒、有没有发生 rug pull
+- 输出面 [`aidless/auditable-llm-eval`](https://github.com/aidless/auditable-llm-eval)：结论是不是"假绿"、有没有过度宣称
+
+分开看两个仓都"正常"，合起来才看见问题：
+
+| run | 是什么 | 联合裁决 |
+|---|---|---|
+| `runs/20261028-r1-baseline/` | 只有工具面，没有输出面证据 | `REVIEW` · R4（同时上报缺 `output_audit`） |
+| `runs/20261028-r2-joint/` | naive 检查器 3/3 全绿，工具面 2/4 被 flag | `BLOCK` · R2 |
+| `runs/20261028-r3-drift/` | 工具描述被 rug pull：`~/.ssh` 换成 `~/.aws` | `BLOCK` · R1 |
+
+60 秒验证（不需要任何上游仓）：
+
+```bash
+cd agent-reliability
+python3 -m unittest discover -s tests   # 42 passed
+python3 contracts/validate.py --all     # 3 个 run 全过
+python3 scripts/mutation_control.py     # 12/12 变异被抓
+```
+
+CI 有两个 job：`gates`（双 Python 腿，不依赖上游）与 `e2e-smoke`（checkout 三仓 main，
+真跑三连跑并断言漂移链）。
 
 ## 现在这个目录里有什么
 
@@ -19,12 +39,13 @@
     │   ├── run.schema.json            # meta.json
     │   ├── tool-evidence.schema.json  # tools.json
     │   ├── joint-verdict.schema.json  # joint_verdict.json
+    │   ├── redteam.schema.json        # redteam.json（可选：攻击剧本覆盖表）
     │   ├── jsonschema_mini.py         # 零依赖校验器（平台层不引第三方依赖）
     │   └── validate.py                # 校验三份产物 + 重算裁决并比对
     ├── rules/                  # M2 联合裁决层：规则是数据，引擎只求值
     │   ├── joint_verdict.json         # R1–R8 八条规则 + verdict_precedence
     │   └── engine.py                  # derive_evidence / evaluate / decide
-    ├── tests/test_joint_verdict.py     # 36 个测试（契约 + 裁决 + 真实产物）
+    ├── tests/test_joint_verdict.py     # 42 个测试（契约 + 裁决 + 真实产物 + M4）
     ├── runs/                        # 每次运行的完整产物
     │   ├── 20261028-r1-baseline/    #   缺输出层 → REVIEW（缺证据 ≠ 通过）
     │   ├── 20261028-r2-joint/       #   假绿 → BLOCK（R2）
@@ -33,6 +54,7 @@
     ├── reports/                     # 基线快照、消融测量、联合实验报告
     ├── scripts/
     │   ├── measure_rule_ablation.py   # 规则消融：摘掉一条规则重算指标
+    │   ├── redteam_coverage.py        # M4：agent-redteam 剧本 → 规则覆盖率两张表
     │   └── mutation_control.py        # 门禁自证：改坏实现，断言测试变红
     ├── baseline.md                  # D1 基线（每个数字对应一条可复算命令）
     ├── WEEK1_PLAN.md                # D1–D7 逐日清单：目标 / 交付物 / 验收 / 停止规则
@@ -52,7 +74,7 @@
     # 契约校验：校验三份产物 + 重算裁决并比对（手改过的裁决会被抓出来）
     python3 contracts/validate.py --all
 
-    # 平台层测试（36 个）
+    # 平台层测试（42 个）
     python3 -m unittest discover -s tests
 
     # 门禁自证：故意改坏实现，断言测试必须变红（8 个变异）
@@ -103,6 +125,28 @@ D7 提案里写的两条最小契约，现在已经落到可执行文件（**只
 | 工具干净 + 假绿 | `FAIL` | R3 |
 | 缺必需证据层 | `INCOMPLETE` | R8 |
 
+## M4：攻击剧本覆盖率（接 agent-redteam）
+
+`scripts/redteam_coverage.py` 把 `aidless/agent-redteam` 的 12 个向量 / 50 条样本
+逐条过一遍工具面规则，产出**两张表**：覆盖的、以及明确标为"规则不覆盖"的。
+
+    python3 scripts/redteam_coverage.py            # 打印两张表并写 reports/*.json
+    python3 run.py ... --redteam-repo ~/agent-redteam   # 顺带把覆盖表写进 runs/<id>/redteam.json
+
+**结果：50 条里只有 1 条能被工具面规则表达（2%）。**
+
+这不是规则写坏了，而是两个层的攻击面几乎不相交：mcp-guard 检查**工具定义投毒**，
+而 redteam 剧本是**提示注入 / 越狱 / 角色劫持 / 资源耗尽 / 聚合器捕获**——都不经过
+工具描述这个入口。唯一命中的 `V05_004` 是因为载荷里直接写着 `os.system(...)`。
+
+所以这条覆盖率的准确含义是：**「同一段文本若出现在工具描述里，规则包会不会命中」**。
+它**不等于**运行时会拦住这条攻击——位置和输入都不同。详细报告与"不能说明什么"：
+[`reports/2026-10-28-redteam-coverage.md`](./reports/2026-10-28-redteam-coverage.md)。
+
+接进裁决的方式很克制：覆盖表是**可选层**（没跑不判 `INCOMPLETE`），只在
+`R9-attack-layer-expresses-nothing`（一条都表达不了）时判 `REVIEW`。当前 1/50
+不触发——覆盖率低是常数事实，写成每次都报警的规则只会制造噪音。
+
 **顺带修掉的运行期问题（D4 遗留）**：`run.py` 原来按**目录名排序**挑漂移基线，
 于是任何人在 `runs/` 下建一个叫 `tmp/` 的目录，都会让它悄悄变成下一次运行的基线，
 漂移结论会取决于目录名的字典序而不是实际跑过什么。现改为按 `meta.json` 的
@@ -114,10 +158,10 @@ D7 提案里写的两条最小契约，现在已经落到可执行文件（**只
 
 | job | 跑什么 | 为什么要分开 |
 |---|---|---|
-| `gates` | 36 个平台测试 + `contracts/validate.py --all` + `scripts/mutation_control.py`（Python 3.10 与 3.12 两条腿） | **不依赖上游**：只读已提交的 `runs/` 产物，上游不可达或改了都不影响这一层 |
-| `e2e-smoke` | checkout 两仓 main，真跑**三连跑**（r1 无基线 → r2 基线 r1 → r3 基线 r2），断言：缺层不判 `PASS`、假绿判 `BLOCK`、漂移换载荷由 `R1` 判 `BLOCK` | 证明**接线 + 漂移链**都通；上游把锚点逻辑改坏，这里就会变红 |
+| `gates` | 42 个平台测试 + `contracts/validate.py --all` + `scripts/mutation_control.py`（Python 3.10 与 3.12 两条腿） | **不依赖上游**：只读已提交的 `runs/` 产物，上游不可达或改了都不影响这一层 |
+| `e2e-smoke` | checkout 三仓 main（含 agent-redteam），真跑**三连跑**（r1 无基线 → r2 基线 r1 → r3 基线 r2），断言：缺层不判 `PASS`、假绿判 `BLOCK`、漂移换载荷由 `R1` 判 `BLOCK`、覆盖表落盘 | 证明**接线 + 漂移链 + M4** 都通；上游把锚点逻辑改坏，这里就会变红 |
 
-变异自证是这套 CI 的重点：`scripts/mutation_control.py` 逐个注入 10 个变异
+变异自证是这套 CI 的重点：`scripts/mutation_control.py` 逐个注入 12 个变异
 （`$ref` 根文档、`additionalProperties`、digest pattern、precedence 顺序、R1/R2/R8
 停用、引擎只取首命中、引擎丢弃 `missing_evidence`、alarm 忽略载荷替换），每个都
 必须让测试变红。跑不过就说明那个"绿灯"是假的。
@@ -144,4 +188,15 @@ D7 提案里写的两条最小契约，现在已经落到可执行文件（**只
 - 逐日计划与验收：[`WEEK1_PLAN.md`](./WEEK1_PLAN.md)
 - 基线快照：[`baseline.md`](./baseline.md) / [`reports/baseline-20261028.txt`](./reports/baseline-20261028.txt)
 - 联合实验（含两个负面结果）：[`reports/2026-10-28-joint-experiment.md`](./reports/2026-10-28-joint-experiment.md)
+- 攻击剧本覆盖率（M4，2%）：[`reports/2026-10-28-redteam-coverage.md`](./reports/2026-10-28-redteam-coverage.md)
 - 提案（契约 / 目录 / CI）：[`proposal.md`](./proposal.md)
+
+## 许可证
+
+MIT，见 [`LICENSE`](./LICENSE)。
+
+本仓**不复制**上游代码或数据：两个评测仓在运行时通过 `--mcp-guard-repo` /
+`--auditable-repo` 引用，攻击剧本只记录派生判定（命中规则 / 锚点），不复制载荷。
+上游许可证：`mcp-guard` 与 `auditable-llm-eval` 均为 MIT；`agent-redteam` 的
+`data/attack_vectors.json` metadata 自述 Apache 2.0，而仓库根 `LICENSE` 是 MIT
+——这个上游不一致已记录在覆盖率报告里。

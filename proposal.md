@@ -85,7 +85,7 @@
 | M1 | `contracts/*.schema.json` + `meta.json` 按 schema 校验 | 改动一个字段能被 schema 拦下 | **完成**：`contracts/` 3 份 schema + 零依赖 `jsonschema_mini.py` + `validate.py`（校验 + 重算裁决比对）；5 种篡改全部被拦下 |
 | M2 | `rules/joint_verdict.json`（联合裁决规则）+ 它的测试 | 三种组合（工具干净+输出干净 / 工具脏+输出绿 / 工具脏+输出红）各有判定与测试 | **完成**：R1–R8 八条规则 + `verdict_precedence`，`rules/engine.py` 只求值；9 种组合各有判定，35 个测试全绿 |
 | M3 | 编排层 CI（端到端 + 变异自证） | 故意改坏 → 门禁必须变红 | **完成**：`.github/workflows/ci.yml`（`gates` 双 Python 腿 + `e2e-smoke`）；`scripts/mutation_control.py` 10/10 变异被抓 |
-| M4 | 接 `agent-redteam` 剧本 | 一次剧本回放产出"规则覆盖 / 不覆盖"两张表 | **未做** |
+| M4 | 接 `agent-redteam` 剧本 | 一次剧本回放产出"规则覆盖 / 不覆盖"两张表 | **完成**：`scripts/redteam_coverage.py` 对 12 向量 / 50 样本产出两张表；**覆盖率 1/50 = 2%**，49 条明确标为"规则不覆盖"（见 `reports/2026-10-28-redteam-coverage.md`） |
 
 ## 7. 明确未做 / 未验证
 
@@ -93,8 +93,9 @@
 - **未接真实 MCP server**，全部工具样例是自造的 4 个。
 - **未接真实模型**，输出面用的是手工构造的 3 条输出。
 - **未跑 GPU 训练腿**（与本提案无关，也未验证）。
-- **联合裁决规则已写但只覆盖 8 条组合**：R1–R8 是为这批 4 工具 / 3 题的样例写的，
-  尚未在真实语料上验证过召回率；`attack_sim_present` 恒为 false（等 M4）。
+- **联合裁决规则已写但只覆盖 9 条规则**：R1–R9 是为这批 4 工具 / 3 题的样例写的，
+  尚未在真实语料上验证过召回率。`attack_sim_present` 现在会随 `redteam.json`
+  变成 true，但它的语义是**可表达性覆盖**（2%），不是运行时拦截率。
 - **契约层只管"没被手改、没不同步"**，不管判据本身对不对——判据仍需人审。
 - 两仓的改动**已本地 commit**（mcp-guard `56aac4d`、auditable-llm-eval `f7e00d2`），
   **尚未 push**；`runs/*/meta.json` 记录的正是这两个 commit。

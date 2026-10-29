@@ -54,7 +54,10 @@
       "audit_naive_green": "",
       "audit_unsupported_claims": 0,
       "missing_evidence_count": 1,
-      "attack_sim_present": false
+      "attack_sim_present": true,
+      "attack_samples": 50,
+      "attack_covered": 1,
+      "attack_uncovered": 49
     },
     "missing_evidence": [
       "output_audit"

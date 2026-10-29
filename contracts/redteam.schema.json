@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/aidless/agent-reliability/contracts/redteam.schema.json",
+  "title": "redteam coverage",
+  "description": "runs/<run_id>/redteam.json（可选）—— agent-redteam 剧本在工具面规则下的覆盖率表。注意：覆盖 = 该载荷若出现在工具描述里会被规则命中，不等于运行时拦截。",
+  "type": "object",
+  "required": [
+    "run_id", "redteam_commit", "dataset_version", "dataset_license",
+    "total_samples", "covered", "uncovered", "coverage_rate",
+    "interpretation", "by_vector", "samples"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$"},
+    "redteam_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$|^unknown$",
+      "description": "agent-redteam 的 commit，保证覆盖表可回溯到具体剧本版本。"
+    },
+    "dataset_version": {"type": "string", "minLength": 1},
+    "dataset_license": {"type": "string", "minLength": 1},
+    "total_samples": {"type": "integer", "minimum": 0},
+    "covered": {"type": "integer", "minimum": 0},
+    "uncovered": {"type": "integer", "minimum": 0},
+    "coverage_rate": {"type": "number", "minimum": 0, "maximum": 1},
+    "interpretation": {"type": "string", "minLength": 1},
+    "by_vector": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["vector_id", "vector_name", "category", "samples", "covered", "rate"],
+        "additionalProperties": false,
+        "properties": {
+          "vector_id": {"type": "string", "minLength": 1},
+          "vector_name": {"type": "string"},
+          "category": {"type": "string"},
+          "samples": {"type": "integer", "minimum": 0},
+          "covered": {"type": "integer", "minimum": 0},
+          "rate": {"type": "number", "minimum": 0, "maximum": 1}
+        }
+      }
+    },
+    "samples": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sample_id", "vector_id", "covered", "rules", "anchors"],
+        "additionalProperties": false,
+        "properties": {
+          "sample_id": {"type": "string", "minLength": 1},
+          "vector_id": {"type": "string", "minLength": 1},
+          "covered": {"type": "boolean"},
+          "rules": {"type": "array", "items": {"type": "string"}},
+          "anchors": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    }
+  }
+}

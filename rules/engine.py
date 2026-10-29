@@ -48,6 +48,9 @@ def derive_evidence(run_dir: pathlib.Path, rules: dict | None = None) -> dict:
         "audit_unsupported_claims": 0,
         "missing_evidence_count": 0,
         "attack_sim_present": False,
+        "attack_samples": 0,
+        "attack_covered": 0,
+        "attack_uncovered": 0,
     }
     missing: list[str] = []
 
@@ -102,6 +105,15 @@ def derive_evidence(run_dir: pathlib.Path, rules: dict | None = None) -> dict:
             evidence["audit_naive_all_green"] = bool(rows) and green == len(rows)
     else:
         missing.append("output_audit")
+
+    # ---- L2（可选）：攻击剧本覆盖 ----
+    redteam_path = run_dir / "redteam.json"
+    if redteam_path.exists():
+        redteam = json.loads(redteam_path.read_text(encoding="utf-8"))
+        evidence["attack_sim_present"] = True
+        evidence["attack_samples"] = redteam.get("total_samples", 0)
+        evidence["attack_covered"] = redteam.get("covered", 0)
+        evidence["attack_uncovered"] = redteam.get("uncovered", 0)
 
     # ---- 必需层 / 可选层 ----
     required = rules.get("required_layers", ["input_guard", "output_audit"])

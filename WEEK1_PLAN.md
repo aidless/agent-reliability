@@ -35,9 +35,9 @@
 | M1 契约层 | 完成 | `contracts/{run,tool-evidence,joint-verdict}.schema.json`、`contracts/jsonschema_mini.py`、`contracts/validate.py` | 删必填字段 / 坏 digest / 未声明字段 / 坏 rules_version / 坏 commit 五种篡改全部被拦下（`TestSchemaRejectsTampering`）；手改 `decision.verdict` 被 `validate.py` 抓出（`TestRealRuns`） |
 | M2 联合裁决层 | 完成 | `rules/joint_verdict.json`（R1–R8 + precedence）、`rules/engine.py` | 9 种证据组合各有判定（`TestDecisionCombos`）；`python3 contracts/validate.py --all` 对 3 个真实 run 全绿 |
 | M3 编排层 CI | 完成（本地 + GitHub Actions） | `.github/workflows/ci.yml`（`gates` 双 Python 腿 + `e2e-smoke`）、`scripts/mutation_control.py` | `gates` 不依赖上游；`e2e-smoke` 真跑 `run.py` 并断言产物合契约。本地 10/10 变异被抓 |
-| M4 接 agent-redteam | **未做** | — | — |
+| M4 接 agent-redteam | 完成 | `scripts/redteam_coverage.py`、`contracts/redteam.schema.json`、`reports/2026-10-28-redteam-coverage.md` | 12 向量 / 50 样本产出覆盖 + 不覆盖两张表；**覆盖率 1/50 = 2%**（负面结果，见报告） |
 
-配套的门禁自证：`scripts/mutation_control.py`，10 个变异全部被测试抓到（0 逃逸）。
+配套的门禁自证：`scripts/mutation_control.py`，12 个变异全部被测试抓到（0 逃逸）。
 
 **本次修掉的三个真 bug**
 
@@ -59,7 +59,9 @@
 | `new_hits` 内容级差集 | mcp-guard `guard/drift.py` 命中身份改为 `(规则 id, 命中文本)` | mcp-guard 测试 19 passed；退回规则 id 级别的变异被抓（2 failed） |
 | 平台仓 + CI | 建 `aidless/agent-reliability`，`.github/workflows/ci.yml` 两个 job | main 上 [`run 40816361533`](https://github.com/aidless/agent-reliability/actions/runs/40816361533) 三个 job 全绿（gates 3.10 / gates 3.12 / e2e-smoke） |
 | CI 门禁自证 | 推一个临时分支，把 R8 阈值 0 → 99，手动 `workflow_dispatch` | [`run 40816581949`](https://github.com/aidless/agent-reliability/actions/runs/40816581949) **按预期失败**，两条腿都报 `'PASS' != 'INCOMPLETE'`；分支已删除 |
-| 两仓提交 | mcp-guard `56aac4d`、auditable-llm-eval `f7e00d2`（**未 push**） | 从两笔 commit 干净导出可完全复现三个裁决 |
+| 三仓提交 | mcp-guard `13ae914`、auditable-llm-eval `f7e00d2`，**均已 push** | 两仓 CI 全绿（mcp-guard: ci + mutation-control；auditable: checks + release-validate + mutation-control） |
+| 敏感锚点 | mcp-guard 命中身份改为 `(规则 id, anchor)`，修掉"纯措辞改动判 BLOCK" | mcp-guard 测试 19 → 23；6 个探针全符合预期 |
+| M4 覆盖率 | `scripts/redteam_coverage.py` + `redteam.json` 契约 | 50 条样本 → 覆盖 1 / 不覆盖 49，**2%** |
 
 ## 明确不做（本周不做，也不建议下周偷做）
 

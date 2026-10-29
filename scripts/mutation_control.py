@@ -71,6 +71,18 @@ MUTATIONS = [
         'if (t.get("drift") or {}).get("new_hits"))',
     ),
     (
+        "M2-rule-r9-disabled",
+        "rules/joint_verdict.json",
+        '{"field": "attack_covered", "op": "eq", "value": 0}',
+        '{"field": "attack_covered", "op": "eq", "value": -1}',
+    ),
+    (
+        "M4-redteam-schema-bounds-open",
+        "contracts/redteam.schema.json",
+        '"coverage_rate": {"type": "number", "minimum": 0, "maximum": 1}',
+        '"coverage_rate": {"type": "number"}',
+    ),
+    (
         "M2-engine-keeps-only-first-match",
         "rules/engine.py",
         "    if winner is None:",

@@ -75,6 +75,11 @@ jobs:
           repository: aidless/auditable-llm-eval
           path: _deps/auditable-llm-eval
 
+      - uses: actions/checkout@v4
+        with:
+          repository: aidless/agent-redteam
+          path: _deps/agent-redteam
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -84,7 +89,8 @@ jobs:
         working-directory: platform
         run: |
           set -e
-          ARGS="--mcp-guard-repo ../_deps/mcp-guard --auditable-repo ../_deps/auditable-llm-eval"
+          ARGS="--mcp-guard-repo ../_deps/mcp-guard --auditable-repo ../_deps/auditable-llm-eval \
+                --redteam-repo ../_deps/agent-redteam"
           python run.py \
             --tools config/tools.example.json \
             --no-baseline --run-id e2e-r1 $ARGS
@@ -120,5 +126,15 @@ jobs:
           assert "R1-drift-with-hit-change" in ids, ids
           assert r3["evidence"]["tool_drift_changed_hits"] == 1, r3["evidence"]
 
+          # M4：攻击剧本覆盖表必须落盘，且被标为"跑过"
+          import os
+          assert os.path.exists("runs/e2e-r3/redteam.json"), "缺少 redteam.json"
+          with open("runs/e2e-r3/redteam.json") as f:
+              rt = json.load(f)
+          assert rt["total_samples"] == len(rt["samples"]), rt["total_samples"]
+          assert rt["covered"] + rt["uncovered"] == rt["total_samples"]
+          assert r3["evidence"]["attack_sim_present"] is True
+
           print("e2e OK:", [(d["verdict"], d["rule_id"]) for d in (r1, r2, r3)])
+          print("redteam coverage:", f"{rt['covered']}/{rt['total_samples']}")
           PY
