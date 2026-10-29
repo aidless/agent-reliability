@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/aidless/agent-reliability/contracts/joint-verdict.schema.json",
+  "title": "joint verdict",
+  "description": "runs/<run_id>/joint_verdict.json —— 三层证据并排 + 可执行的联合裁决（M2）。",
+  "type": "object",
+  "required": ["run_id", "input_guard", "decision"],
+  "additionalProperties": false,
+  "properties": {
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$"},
+    "input_guard": {
+      "type": "object",
+      "required": ["scanned", "flagged", "flagged_tools", "drift_alerts", "verdict"],
+      "additionalProperties": true,
+      "properties": {
+        "scanned": {"type": "integer", "minimum": 0},
+        "flagged": {"type": "integer", "minimum": 0},
+        "flagged_tools": {"type": "array", "items": {"type": "string"}},
+        "drift_alerts": {"type": "array"},
+        "verdict": {"type": "string", "enum": ["FLAG", "CLEAN"]},
+        "note": {"type": "string"}
+      }
+    },
+    "output_audit": {
+      "type": "object",
+      "required": ["total", "authoritative_rate", "naive_green", "verdict"],
+      "additionalProperties": true,
+      "properties": {
+        "total": {"type": "integer", "minimum": 0},
+        "semantic_scored": {"type": "integer", "minimum": 0},
+        "runtime_errors": {"type": "integer", "minimum": 0},
+        "authoritative_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "naive_green": {"type": "string"},
+        "deception_gap_points": {"type": ["number", "null"]},
+        "items_with_unsupported_claims": {"type": "integer", "minimum": 0},
+        "dataset_conformance_problems": {"type": "array"},
+        "verdict": {"type": "string", "enum": ["PASS", "FAIL"]}
+      }
+    },
+    "joint_verdict": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "naive_green": {"type": "string"},
+        "input_guard": {"type": "string"},
+        "output_audit": {"type": "string"},
+        "headline": {"type": "string"}
+      }
+    },
+    "decision": {
+      "type": "object",
+      "required": ["verdict", "severity", "rule_id", "why", "matched_rules", "evidence", "missing_evidence"],
+      "additionalProperties": false,
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "enum": ["PASS", "REVIEW", "FAIL", "BLOCK", "INCOMPLETE"]
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["info", "review", "fail", "block", "incomplete"]
+        },
+        "rule_id": {"type": ["string", "null"]},
+        "why": {"type": "string"},
+        "matched_rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "verdict", "severity", "why"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"type": "string"},
+              "verdict": {"type": "string"},
+              "severity": {"type": "string"},
+              "why": {"type": "string"}
+            }
+          }
+        },
+        "evidence": {"type": "object"},
+        "missing_evidence": {"type": "array", "items": {"type": "string"}},
+        "rules_version": {"type": "string", "pattern": "^[0-9a-f]{16}$"}
+      }
+    }
+  }
+}

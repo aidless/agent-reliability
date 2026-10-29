@@ -1,0 +1,22 @@
+{
+  "run_id": "20261028-r3-drift",
+  "created_utc": "2026-10-29T04:02:11+00:00",
+  "rules_version": "97e6a7225384bf34",
+  "tool_digests": {
+    "export_profile": "808dedfb3cf5339b112e60059c3cc0fe8f773e388f3257f7491f168c7c920762",
+    "send_message": "41621b9a981c3111f411dea281e9ae8ef278f7666f63fefe2422aefef42eaeb0",
+    "get_weather": "7a9f02d2fab3cc976f4e8c6838ad17c5141adf06706228f09a066332bb40cbca",
+    "generate_ssh_keypair": "e506cc7a384f58a4bafb1d63aae99238433355a67a57091df723656bcea24dfd"
+  },
+  "repos": {
+    "mcp-guard": {
+      "path": "/home/liuzewen/mcp-guard",
+      "commit": "56aac4d40eda67875b542c1e0ce6620fd1135655"
+    },
+    "auditable-llm-eval": {
+      "path": "/home/liuzewen/auditable-llm-eval",
+      "commit": "f7e00d2837f5f0dd2806818e6b24de5f68fd972a"
+    }
+  },
+  "tools_input": "/home/liuzewen/work/agent-reliability/config/tools.drifted.json"
+}

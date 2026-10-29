@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/aidless/agent-reliability/contracts/run.schema.json",
+  "title": "run meta",
+  "description": "runs/<run_id>/meta.json —— 一次运行的契约层：run_id / rules_version / tool_digests，以及两个被编排仓的 commit。",
+  "type": "object",
+  "required": ["run_id", "created_utc", "rules_version", "tool_digests", "repos"],
+  "additionalProperties": false,
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$",
+      "description": "一次运行的唯一 id；同一个 id 下的产物必须可被重新算出。"
+    },
+    "created_utc": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}",
+      "description": "ISO8601 UTC 时间戳（秒精度）。"
+    },
+    "rules_version": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "规则包内容 sha256 的前 16 位。规则变了它就变。"
+    },
+    "tool_digests": {
+      "type": "object",
+      "description": "工具名 -> 工具定义 sha256。键是工具名，值必须是完整 sha256。",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      }
+    },
+    "repos": {
+      "type": "object",
+      "required": ["mcp-guard", "auditable-llm-eval"],
+      "additionalProperties": false,
+      "properties": {
+        "mcp-guard": {"$ref": "#/$defs/repo"},
+        "auditable-llm-eval": {"$ref": "#/$defs/repo"}
+      }
+    },
+    "tools_input": {
+      "type": "string",
+      "description": "输入工具清单的路径（绝对路径）。"
+    }
+  },
+  "$defs": {
+    "repo": {
+      "type": "object",
+      "required": ["path", "commit"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {"type": "string"},
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$|^unknown$"}
+      }
+    }
+  }
+}

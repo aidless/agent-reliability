@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+
+# 本地搭建脚手架：改动前的原始文件备份，不入库
+backups/
+
+# 历史产物：本地保留全部，入库只保留 D6 报告引用的两份
+runs/_archive/*
+!runs/_archive/20261028-first-joint/
+!runs/_archive/20261028-joint-v2/

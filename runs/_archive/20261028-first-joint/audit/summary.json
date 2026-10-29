@@ -1,0 +1,11 @@
+{
+  "total": 3,
+  "semantic_scored": 2,
+  "runtime_errors": 1,
+  "overall_reference_check_rate": 0.5,
+  "by_task": {
+    "verifier_design": 0.0,
+    "eval_yaml": 1.0
+  },
+  "items_with_unsupported_claims": 1
+}

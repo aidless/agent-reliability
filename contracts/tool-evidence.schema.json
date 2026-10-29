@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/aidless/agent-reliability/contracts/tool-evidence.schema.json",
+  "title": "tool evidence",
+  "description": "runs/<run_id>/tools.json —— 工具面证据：每个工具的哈希、规则命中、与上一次的漂移。",
+  "type": "object",
+  "required": ["run_id", "rules_version", "scanned", "flagged", "tools"],
+  "additionalProperties": false,
+  "properties": {
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$"},
+    "rules_version": {"type": "string", "pattern": "^[0-9a-f]{16}$"},
+    "scanned": {"type": "integer", "minimum": 0},
+    "flagged": {"type": "integer", "minimum": 0},
+    "baseline_run": {
+      "type": ["string", "null"],
+      "description": "本次比对的上一次 run id；null = 没有基线（首次运行）。"
+    },
+    "tools": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "digest", "flagged", "hits", "drift", "definition"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "flagged": {"type": "boolean"},
+          "hits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["rule", "severity", "match", "why"],
+              "additionalProperties": false,
+              "properties": {
+                "rule": {"type": "string", "minLength": 1},
+                "severity": {"type": "string", "enum": ["high", "medium", "low"]},
+                "match": {"type": "string"},
+                "why": {"type": "string"}
+              }
+            }
+          },
+          "drift": {
+            "type": "object",
+            "required": ["status"],
+            "additionalProperties": true,
+            "properties": {
+              "name": {"type": "string"},
+              "status": {
+                "type": "string",
+                "enum": ["ok", "new", "changed", "DRIFT", "no-baseline"]
+              },
+              "fields": {"type": "array", "items": {"type": "string"}},
+              "new_hits": {"type": "array", "items": {"type": "string"}},
+              "changed_hits": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "同一规则、但命中内容变了的规则 id（载荷替换）"
+              },
+              "hit_delta": {
+                "type": "array",
+                "description": "逐条列出新增/移除的（规则, 命中文本）",
+                "items": {
+                  "type": "object",
+                  "required": ["rule", "change", "match"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "rule": {"type": "string"},
+                    "change": {"type": "string", "enum": ["added", "removed"]},
+                    "match": {"type": "string"}
+                  }
+                }
+              },
+              "alarm": {
+                "type": ["boolean", "null"],
+                "description": "命中是否变化；null = 没快照，无法判断（不知道 ≠ 干净）"
+              },
+              "gone_hits": {"type": "array", "items": {"type": "string"}},
+              "digest": {"type": "string"},
+              "old": {"type": "string"},
+              "new": {"type": "string"}
+            }
+          },
+          "definition": {
+            "type": "object",
+            "description": "工具定义原文（name / description / inputSchema）。"
+          }
+        }
+      }
+    }
+  }
+}

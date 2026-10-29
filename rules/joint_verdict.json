@@ -1,0 +1,109 @@
+{
+  "version": "1.0.0",
+  "description": "联合裁决规则：把工具面证据（mcp-guard）与输出面证据（auditable-llm-eval）映射成一个可执行结论。规则是数据，不是代码——改这里就改判据，不要改 engine。",
+  "evidence_fields": {
+    "tool_scanned": "本轮扫描的工具总数",
+    "tool_flagged": "被规则命中的工具数（mcp-guard 的 flagged；命中 ≠ 恶意）",
+    "tool_flagged_names": "被命中的工具名列表",
+    "tool_drift_alerts": "发生漂移（description/schema 变动）的工具数",
+    "tool_drift_new_hits": "漂移中「此前完全没触发的规则 id 开始触发」的工具数",
+    "tool_drift_changed_hits": "漂移中「同一规则命中的内容被换掉」的工具数（载荷替换）",
+    "tool_drift_alarm": "漂移中命中内容发生变化的工具数（new_hits 或 changed_hits 非空）",
+    "tool_drift_unknown": "漂移了但没有快照、无法判断命中是否变化的工具数（不知道 ≠ 干净）",
+    "tool_clean": "工具面完全干净：0 命中且 0 漂移",
+    "audit_present": "输出面证据是否存在（audit/summary.json 在不在）",
+    "audit_total": "输出面题目总数",
+    "audit_semantic_scored": "真正进入语义评分的题数（runtime_error 会被排除）",
+    "audit_excluded": "被排除在评分之外的题数（total - semantic_scored）",
+    "audit_runtime_errors": "被判为 runtime_error 的题数",
+    "audit_rate": "权威 reference_check 通过率（null = 没有输出面证据）",
+    "audit_rate_is_1": "权威通过率是否满分",
+    "audit_naive_all_green": "naive 检查器（只查非空+长度）是否全绿",
+    "audit_naive_green": "naive 全绿计数，形如 3/3",
+    "audit_unsupported_claims": "检出过度宣称的题数",
+    "missing_evidence_count": "缺失的**必需**证据层数量",
+    "attack_sim_present": "是否跑过攻击模拟（agent-redteam，M4 预留，当前恒为 false）"
+  },
+  "required_layers": ["input_guard", "output_audit"],
+  "optional_layers": ["attack_simulation"],
+  "verdict_precedence": ["BLOCK", "FAIL", "REVIEW", "INCOMPLETE", "PASS"],
+  "rules": [
+    {
+      "id": "R1-drift-with-hit-change",
+      "verdict": "BLOCK",
+      "severity": "block",
+      "why": "工具定义发生了漂移，且命中的东西变了——要么有新规则开始触发，要么同一规则命中的内容被整个换掉（例如 ~/.ssh 换成 ~/.aws）。审核者没看见的改动里多了一条投毒指令。",
+      "all": [
+        {"field": "tool_drift_alarm", "op": "gt", "value": 0}
+      ]
+    },
+    {
+      "id": "R2-false-green-over-untrusted-tools",
+      "verdict": "BLOCK",
+      "severity": "block",
+      "why": "工具面有命中，而输出面的 naive 检查器全绿：结论建立在不可信的工具面上，且没有任何东西提示审核者停下来。",
+      "all": [
+        {"field": "tool_flagged", "op": "gt", "value": 0},
+        {"field": "audit_naive_all_green", "op": "eq", "value": true},
+        {"field": "audit_rate_is_1", "op": "eq", "value": false}
+      ]
+    },
+    {
+      "id": "R3-false-green",
+      "verdict": "FAIL",
+      "severity": "fail",
+      "why": "工具面干净，但输出面出现假绿（naive 全绿、权威评分不满）：结论本身不可采信，与工具无关。",
+      "all": [
+        {"field": "tool_flagged", "op": "eq", "value": 0},
+        {"field": "audit_naive_all_green", "op": "eq", "value": true},
+        {"field": "audit_rate_is_1", "op": "eq", "value": false}
+      ]
+    },
+    {
+      "id": "R4-flagged-tools",
+      "verdict": "REVIEW",
+      "severity": "review",
+      "why": "工具面有命中：需要人工复核工具定义。mcp-guard 的规则是词法启发式，命中只表示「值得看一眼」，不等于判定为恶意。",
+      "all": [
+        {"field": "tool_flagged", "op": "gt", "value": 0}
+      ]
+    },
+    {
+      "id": "R5-drift",
+      "verdict": "REVIEW",
+      "severity": "review",
+      "why": "工具定义发生漂移（描述/schema 变动）。没有新引入的规则命中，所以不是告警级，但必须有人确认这次改动是升级还是投毒。",
+      "all": [
+        {"field": "tool_drift_alerts", "op": "gt", "value": 0}
+      ]
+    },
+    {
+      "id": "R6-audit-coverage-gap",
+      "verdict": "REVIEW",
+      "severity": "review",
+      "why": "有题被排除在语义评分之外（runtime_error）：汇总分的分母变小了，只报一个率会把这部分隐藏掉。",
+      "all": [
+        {"field": "audit_excluded", "op": "gt", "value": 0}
+      ]
+    },
+    {
+      "id": "R7-audit-not-perfect",
+      "verdict": "FAIL",
+      "severity": "fail",
+      "why": "输出面权威 reference_check 未满分：结论存在不可直接采信的部分。",
+      "all": [
+        {"field": "audit_present", "op": "eq", "value": true},
+        {"field": "audit_rate_is_1", "op": "eq", "value": false}
+      ]
+    },
+    {
+      "id": "R8-missing-evidence",
+      "verdict": "INCOMPLETE",
+      "severity": "incomplete",
+      "why": "缺少某一层必需证据，无法给出联合结论——此时「没发现问题」和「没查」必须区分开。",
+      "all": [
+        {"field": "missing_evidence_count", "op": "gt", "value": 0}
+      ]
+    }
+  ]
+}

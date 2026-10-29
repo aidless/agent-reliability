@@ -1,0 +1,22 @@
+# 基线快照 — 2026-10-29T03:23:49Z
+python: Python 3.12.3
+pytest: pytest 9.1.1
+
+== mcp-guard ==
+HEAD: 08e3c9876c69e48ca384921ae976d47e614b6e42
+16 passed in 0.06s
+{"encoder": "rules-v1", "n_poison": 19, "n_benign": 11, "recall_case": 0.7368, "fpr_benign": 0.0, "recall_rule": 0.7083}
+
+== auditable-llm-eval ==
+HEAD: 11d8f3890441c785a5ceb60c0da8286d028760c2
+Ran 40 tests in 0.114s
+OK
+40 passed in 0.30s
+  selftest     PASS
+  spec         PASS
+  verifier     PASS
+  gitignore    PASS
+OVERALL: PASS
+  authoritative : 0.67  (committed 0.67, match=True)
+  authoritative : 0.69  (committed 0.69, match=True)
+deception gap : naive 100% green vs authoritative 68% — 32 points

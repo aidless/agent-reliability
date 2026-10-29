@@ -1,0 +1,22 @@
+{
+  "run_id": "20261028-joint-v2",
+  "created_utc": "2026-10-29T03:21:48+00:00",
+  "rules_version": "a02ae556fe5bd29c",
+  "tool_digests": {
+    "export_profile": "808dedfb3cf5339b112e60059c3cc0fe8f773e388f3257f7491f168c7c920762",
+    "send_message": "a914c5a026adbaf07e2a359266419d3b6d9bfe3fe553f1750e4f11b1cbc2e22f",
+    "get_weather": "7a9f02d2fab3cc976f4e8c6838ad17c5141adf06706228f09a066332bb40cbca",
+    "generate_ssh_keypair": "e506cc7a384f58a4bafb1d63aae99238433355a67a57091df723656bcea24dfd"
+  },
+  "repos": {
+    "mcp-guard": {
+      "path": "/home/liuzewen/mcp-guard",
+      "commit": "08e3c9876c69e48ca384921ae976d47e614b6e42"
+    },
+    "auditable-llm-eval": {
+      "path": "/home/liuzewen/auditable-llm-eval",
+      "commit": "11d8f3890441c785a5ceb60c0da8286d028760c2"
+    }
+  },
+  "tools_input": "/home/liuzewen/work/agent-reliability/config/tools.example.json"
+}

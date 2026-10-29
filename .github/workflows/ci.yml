@@ -1,0 +1,106 @@
+name: ci
+
+# 两个 job，分工明确：
+#
+#   gates     —— 平台层自己的门禁：测试 + 契约 + 变异自证。
+#                完全不依赖两个上游仓（只读 runs/ 里已提交的产物），
+#                所以它对上游是否可达、是不是最新都不敏感。
+#
+#   e2e-smoke —— 端到端接线检查：把 mcp-guard 与 auditable-llm-eval 的
+#                当前 main checkout 下来，真的跑一次 run.py。
+#                只断言「能跑通 + 产物合契约 + 裁决是合法枚举」，
+#                不断言具体裁决——那取决于上游那一刻的代码。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    name: platform-gates (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          check-latest: false
+
+      # 参照实现只在 3.12 腿装：TestSchemaCrossValidation 用它逐条比对
+      # 零依赖校验器的结论；没装就 skip，运行时不依赖它。
+      - name: 安装参照实现（仅 3.12 腿）
+        if: matrix.python-version == '3.12'
+        run: pip install "jsonschema>=4.20"
+
+      - name: 平台层测试（契约 + 裁决 + 真实产物）
+        run: python -m unittest discover -s tests -v
+
+      - name: 契约校验（三份产物 + 重算裁决比对）
+        run: python contracts/validate.py --all
+
+      - name: 门禁自证（故意改坏实现，测试必须变红）
+        run: python scripts/mutation_control.py
+
+  e2e-smoke:
+    name: e2e-smoke (upstream main)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: platform
+
+      - uses: actions/checkout@v4
+        with:
+          repository: aidless/mcp-guard
+          path: _deps/mcp-guard
+
+      - uses: actions/checkout@v4
+        with:
+          repository: aidless/auditable-llm-eval
+          path: _deps/auditable-llm-eval
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          check-latest: false
+
+      - name: 端到端跑一次（离线、零模型调用、零 API key）
+        working-directory: platform
+        run: |
+          python run.py \
+            --tools config/tools.example.json \
+            --dataset config/joint_eval_dataset.jsonl \
+            --predictions config/joint_eval_predictions.jsonl \
+            --no-baseline --run-id ci-smoke \
+            --mcp-guard-repo ../_deps/mcp-guard \
+            --auditable-repo ../_deps/auditable-llm-eval
+
+      - name: 产物必须过契约，裁决必须是合法枚举
+        working-directory: platform
+        run: |
+          python contracts/validate.py runs/ci-smoke
+          python - <<'PY'
+          import json
+          d = json.load(open("runs/ci-smoke/joint_verdict.json"))["decision"]
+          allowed = {"PASS", "REVIEW", "FAIL", "BLOCK", "INCOMPLETE"}
+          assert d["verdict"] in allowed, f"非法裁决 {d['verdict']!r}"
+          assert d["evidence"], "evidence 不能为空"
+          print(f"verdict={d['verdict']} rule={d['rule_id']}")
+          print(f"matched={[m['id'] for m in d['matched_rules']]}")
+          PY
