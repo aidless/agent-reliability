@@ -5,7 +5,7 @@
 加规则之前的数字、之后的数字、以及"如果没有这条规则会漏掉哪个用例"。
 
 用法：
-    python3 scripts/measure_rule_ablation.py --repo /home/liuzewen/mcp-guard \
+    python3 scripts/measure_rule_ablation.py --repo ~/mcp-guard \
         --rule encoded-exfil
 
 输出：JSON（stdout），含 with_rule / without_rule 两组指标与被漏掉的用例名。
@@ -44,7 +44,7 @@ def metrics(scan_tool, rows) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--repo", default="/home/liuzewen/mcp-guard")
+    ap.add_argument("--repo", default=str(pathlib.Path.home() / "mcp-guard"))
     ap.add_argument("--cases", default=None)
     ap.add_argument("--rule", required=True, help="要消融的规则 id")
     args = ap.parse_args()
