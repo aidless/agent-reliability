@@ -82,10 +82,10 @@ CI 有两个 job：`gates`（双 Python 腿，不依赖上游）与 `e2e-smoke`�
     # 契约校验：校验三份产物 + 重算裁决并比对（手改过的裁决会被抓出来）
     python3 contracts/validate.py --all
 
-    # 平台层测试（42 个）
+    # 平台层测试（51 个）
     python3 -m unittest discover -s tests
 
-    # 门禁自证：故意改坏实现，断言测试必须变红（8 个变异）
+    # 门禁自证：故意改坏实现，断言测试必须变红（14 个变异）
     python3 scripts/mutation_control.py
 
     # 规则消融：摘掉某条规则重算指标（不改文件）
