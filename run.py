@@ -118,6 +118,8 @@ def main() -> int:
     ap.add_argument("--tools", required=True, help="MCP 工具定义 JSON")
     ap.add_argument("--dataset", default=None, help="评测集 jsonl（含 reference_checks）")
     ap.add_argument("--predictions", default=None, help="模型输出 jsonl")
+    ap.add_argument("--predictions-model", default=None,
+                    help="产出该预测的模型 id（写进 meta；不给就是 hand-written）")
     ap.add_argument("--run-id", default=None, help="本次 run 的 id（默认用时间戳）")
     ap.add_argument("--baseline-run", default=None,
                     help="显式指定漂移基线 run id（默认取 created_utc 最新的那次）")
@@ -224,6 +226,10 @@ def main() -> int:
             "auditable-llm-eval": {"path": str(aud_repo), "commit": git_commit(aud_repo)},
         },
         "tools_input": str(pathlib.Path(args_.tools).resolve()),
+        # 输出面是谁产的：手写还是某个真实模型。不记这个，"模型变了"和
+        # "判分标准变了"仍然分不开——scorer_version 只覆盖评分器那一侧。
+        "predictions_model": args_.predictions_model or (
+            "hand-written" if args_.predictions else None),
     }
     (run_dir / "meta.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")

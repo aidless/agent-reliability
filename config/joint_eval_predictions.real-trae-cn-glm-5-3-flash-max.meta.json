@@ -1,0 +1,8 @@
+{
+  "model": "trae-cn/glm-5.3-flash-max",
+  "generated_utc": "2026-10-29T07:03:25+00:00",
+  "temperature": 0,
+  "max_tokens": 1200,
+  "count": 3,
+  "predictions_file": "joint_eval_predictions.real-trae-cn-glm-5-3-flash-max.jsonl"
+}

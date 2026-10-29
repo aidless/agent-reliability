@@ -52,6 +52,10 @@ CI 有两个 job：`gates`（双 Python 腿，不依赖上游）与 `e2e-smoke`�
     │   ├── 20261028-r3-drift/       #   漂移 → BLOCK（R1：ssh → aws）
     │   └── _archive/                #   历史产物（`_` 前缀，校验与测试都会跳过）
     ├── corpus/                      # 真实 MCP server 的 tools/list 原样采集
+    ├── config/
+    │   ├── joint_eval_dataset.jsonl             # 严格关键词版（英文原词）
+    │   ├── joint_eval_dataset.bilingual.jsonl   # 双语容错版（中英任一）
+    │   └── joint_eval_predictions.real-*.jsonl  # 真实模型原文输出
     ├── reports/                     # 基线快照、消融测量、联合实验报告
     ├── scripts/
     │   ├── measure_rule_ablation.py   # 规则消融：摘掉一条规则重算指标
@@ -200,6 +204,28 @@ CI 里 `python3 scripts/scan_real_corpus.py --fail-if-flagged` 是硬门禁：
 > 目标模式上是有效的。这 50 条载荷原本面向**提示注入**，塞进工具描述属于
 > out-of-distribution 测试，不是它们在原生攻击面的检出率。
 > 报告：[`reports/2026-10-28-injected-recall.md`](./reports/2026-10-28-injected-recall.md)
+
+### 真实模型输出上的假绿（第一次，2026-10-29）
+
+用两个真实模型（DeepSeek V4.1 Flash、GLM 5.3 Flash Max，走本机网关，零边际成本）
+跑同一条链路，替代此前**手写**的 3 条输出：
+
+| 模型 | naive | 权威分（严格） | 权威分（双语容错） | 裁决变化 |
+|---|---|---:|---:|---|
+| DeepSeek V4.1 Flash | 3/3 | 0.8333 | 1.0 | `BLOCK`/R2 → `REVIEW`/R4 |
+| GLM 5.3 Flash Max | 3/3 | 0.8889 | 1.0 | `BLOCK`/R2 → `REVIEW`/R4 |
+
+**naive 3/3 全绿在真实模型上依旧不是通过信号。** 但扣分的原因出人意料：
+两个模型都写了**正确的中文**（「超时」「指标」），检查器却只认英文原词
+（`timeout` / `metrics`）——**是检查器脆性，不是模型失实**。改成双语容错后
+两个模型的权威分都回到 1.0。
+
+**一个语言缺陷能把裁决从 `BLOCK` 拉到 `REVIEW`**——这正是全组合表里
+R2（工具命中+假绿）依赖输出面证据的实证：证据变干净，结论随之回到
+「工具面需要人工复核」的真实状态。
+
+> 每模型只 3 题、2 个模型，不构成模型质量比较。双语版 1.0 是放宽后检查下的 1.0，
+> 与严格版不是一个口径。报告：[`reports/2026-10-29-real-model-eval.md`](./reports/2026-10-29-real-model-eval.md)
 
 ## M4：攻击剧本覆盖率（接 agent-redteam）
 

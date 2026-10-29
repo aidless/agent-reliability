@@ -4,7 +4,14 @@
   "title": "run meta",
   "description": "runs/<run_id>/meta.json —— 一次运行的契约层：run_id / rules_version / scorer_version / tool_digests，以及两个被编排仓的 commit。",
   "type": "object",
-  "required": ["run_id", "created_utc", "rules_version", "scorer_version", "tool_digests", "repos"],
+  "required": [
+    "run_id",
+    "created_utc",
+    "rules_version",
+    "scorer_version",
+    "tool_digests",
+    "repos"
+  ],
   "additionalProperties": false,
   "properties": {
     "run_id": {
@@ -37,26 +44,48 @@
     },
     "repos": {
       "type": "object",
-      "required": ["mcp-guard", "auditable-llm-eval"],
+      "required": [
+        "mcp-guard",
+        "auditable-llm-eval"
+      ],
       "additionalProperties": false,
       "properties": {
-        "mcp-guard": {"$ref": "#/$defs/repo"},
-        "auditable-llm-eval": {"$ref": "#/$defs/repo"}
+        "mcp-guard": {
+          "$ref": "#/$defs/repo"
+        },
+        "auditable-llm-eval": {
+          "$ref": "#/$defs/repo"
+        }
       }
     },
     "tools_input": {
       "type": "string",
       "description": "输入工具清单的路径（绝对路径）。"
+    },
+    "predictions_model": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "产出预测的模型 id；hand-written = 手写输出，null = 该 run 没有输出面"
     }
   },
   "$defs": {
     "repo": {
       "type": "object",
-      "required": ["path", "commit"],
+      "required": [
+        "path",
+        "commit"
+      ],
       "additionalProperties": false,
       "properties": {
-        "path": {"type": "string"},
-        "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$|^unknown$"}
+        "path": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$|^unknown$"
+        }
       }
     }
   }

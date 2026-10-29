@@ -1,0 +1,822 @@
+{
+  "generated_utc": "2026-10-29T08:33:44+00:00",
+  "corpus_file": "mcp-tools-20261028.json",
+  "corpus_generated_utc": "2026-10-29T05:48:48+00:00",
+  "servers": 6,
+  "total_tools": 53,
+  "flagged_tools": 0,
+  "flag_rate": 0.0,
+  "rule_counts": {},
+  "per_server": [
+    {
+      "server_id": "everything",
+      "package": "@modelcontextprotocol/server-everything",
+      "version": "2.1.0",
+      "tools": 16,
+      "flagged": 0
+    },
+    {
+      "server_id": "filesystem",
+      "package": "@modelcontextprotocol/server-filesystem",
+      "version": "2.1.0",
+      "tools": 14,
+      "flagged": 0
+    },
+    {
+      "server_id": "memory",
+      "package": "@modelcontextprotocol/server-memory",
+      "version": "2.0.1",
+      "tools": 9,
+      "flagged": 0
+    },
+    {
+      "server_id": "sequential-thinking",
+      "package": "@modelcontextprotocol/server-sequential-thinking",
+      "version": "2.0.0",
+      "tools": 1,
+      "flagged": 0
+    },
+    {
+      "server_id": "fetch",
+      "package": "mcp-server-fetch",
+      "version": "2026.10.28",
+      "tools": 1,
+      "flagged": 0
+    },
+    {
+      "server_id": "git",
+      "package": "mcp-server-git",
+      "version": "2026.10.28",
+      "tools": 12,
+      "flagged": 0
+    }
+  ],
+  "near_misses": [
+    {
+      "server_id": "everything",
+      "tool": "get-env",
+      "words": [
+        "key",
+        "token",
+        "secret",
+        "credential",
+        "password",
+        "env"
+      ],
+      "desc_len": 303
+    },
+    {
+      "server_id": "everything",
+      "tool": "get-header-params",
+      "words": [
+        "http"
+      ],
+      "desc_len": 230
+    },
+    {
+      "server_id": "everything",
+      "tool": "gzip-file-as-resource",
+      "words": [
+        "file"
+      ],
+      "desc_len": 337
+    },
+    {
+      "server_id": "filesystem",
+      "tool": "read_file",
+      "words": [
+        "file"
+      ],
+      "desc_len": 85
+    },
+    {
+      "server_id": "filesystem",
+      "tool": "read_text_file",
+      "words": [
+        "file"
+      ],
+      "desc_len": 457
+    },
+    {
+      "server_id": "filesystem",
+      "tool": "read_media_file",
+      "words": [
+        "file"
+      ],
+      "desc_len": 234
+    },
+    {
+      "server_id": "filesystem",
+      "tool": "read_multiple_files",
+      "words": [
+        "file",
+        "path"
+      ],
+      "desc_len": 324
+    },
+    {
+      "server_id": "filesystem",
+      "tool": "write_file",
+      "words": [
+        "file"
+      ],
+      "desc_len": 228
+    },
+    {
+      "server_id": "filesystem",
+      "tool": "edit_file",
+      "words": [
+        "file"
+      ],
+      "desc_len": 185
+    },
+    {
+      "server_id": "filesystem",
+      "tool": "create_directory",
+      "words": [
+        "path"
+      ],
+      "desc_len": 310
+    },
+    {
+      "server_id": "filesystem",
+      "tool": "list_directory",
+      "words": [
+        "file",
+        "path"
+      ],
+      "desc_len": 309
+    },
+    {
+      "server_id": "filesystem",
+      "tool": "list_directory_with_sizes",
+      "words": [
+        "file",
+        "path"
+      ],
+      "desc_len": 323
+    },
+    {
+      "server_id": "filesystem",
+      "tool": "directory_tree",
+      "words": [
+        "file"
+      ],
+      "desc_len": 360
+    },
+    {
+      "server_id": "filesystem",
+      "tool": "move_file",
+      "words": [
+        "file"
+      ],
+      "desc_len": 325
+    },
+    {
+      "server_id": "filesystem",
+      "tool": "search_files",
+      "words": [
+        "file",
+        "path"
+      ],
+      "desc_len": 424
+    },
+    {
+      "server_id": "filesystem",
+      "tool": "get_file_info",
+      "words": [
+        "file"
+      ],
+      "desc_len": 312
+    },
+    {
+      "server_id": "filesystem",
+      "tool": "list_allowed_directories",
+      "words": [
+        "file",
+        "path"
+      ],
+      "desc_len": 248
+    },
+    {
+      "server_id": "sequential-thinking",
+      "tool": "sequentialthinking",
+      "words": [
+        "key",
+        "path"
+      ],
+      "desc_len": 2781
+    },
+    {
+      "server_id": "fetch",
+      "tool": "fetch",
+      "words": [
+        "url"
+      ],
+      "desc_len": 307
+    },
+    {
+      "server_id": "git",
+      "tool": "git_add",
+      "words": [
+        "file"
+      ],
+      "desc_len": 38
+    },
+    {
+      "server_id": "git",
+      "tool": "git_show",
+      "words": [
+        "file",
+        "path"
+      ],
+      "desc_len": 84
+    }
+  ],
+  "tools": [
+    {
+      "server_id": "everything",
+      "package": "@modelcontextprotocol/server-everything",
+      "version": "2.1.0",
+      "tool": "echo",
+      "digest": "36667183a1c9c064561ea51a407704fed7e1961962fef93a0710e365dbaa0e4a",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 28
+    },
+    {
+      "server_id": "everything",
+      "package": "@modelcontextprotocol/server-everything",
+      "version": "2.1.0",
+      "tool": "get-annotated-message",
+      "digest": "f046691996a64abc4f5b5dd45996097588e760df5308c0aab6150c52e40c0bb2",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 75
+    },
+    {
+      "server_id": "everything",
+      "package": "@modelcontextprotocol/server-everything",
+      "version": "2.1.0",
+      "tool": "get-env",
+      "digest": "72fd20a1798d89ad77e1ba0bc366b1c2793a0aebed40fa42825ca28af807171b",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 303
+    },
+    {
+      "server_id": "everything",
+      "package": "@modelcontextprotocol/server-everything",
+      "version": "2.1.0",
+      "tool": "get-header-params",
+      "digest": "94c406fdb686d8b38d7e126fafb8a2ef89cefab5c2bd12670b6f3802dfcdcbe6",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 230
+    },
+    {
+      "server_id": "everything",
+      "package": "@modelcontextprotocol/server-everything",
+      "version": "2.1.0",
+      "tool": "get-resource-links",
+      "digest": "b61620fae226abb8a88fe52c653f5a10fd81254e84fe98a4315e6570e75ea5d6",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 76
+    },
+    {
+      "server_id": "everything",
+      "package": "@modelcontextprotocol/server-everything",
+      "version": "2.1.0",
+      "tool": "get-resource-reference",
+      "digest": "8f58128217ccb10a1b8924d09ed42a53d8c6e024d8430f3c3210e496638e2b55",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 60
+    },
+    {
+      "server_id": "everything",
+      "package": "@modelcontextprotocol/server-everything",
+      "version": "2.1.0",
+      "tool": "get-structured-content",
+      "digest": "e451ffe52fbafc56533eae38ab32a60340c6de1265e9835d12b1bd20eed75a7c",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 81
+    },
+    {
+      "server_id": "everything",
+      "package": "@modelcontextprotocol/server-everything",
+      "version": "2.1.0",
+      "tool": "get-sum",
+      "digest": "520776f9f444ab0544e3b0e375def3840a86bd1fece3e98d5182893c68f93aad",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 30
+    },
+    {
+      "server_id": "everything",
+      "package": "@modelcontextprotocol/server-everything",
+      "version": "2.1.0",
+      "tool": "get-tiny-image",
+      "digest": "cfa6d071c977d7a90b2a71ae2cc94d60a2511d87826bf0e7acd5ec3d9de5c2fe",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 30
+    },
+    {
+      "server_id": "everything",
+      "package": "@modelcontextprotocol/server-everything",
+      "version": "2.1.0",
+      "tool": "gzip-file-as-resource",
+      "digest": "14a884519a2ce1e0dd2260a05e861376e6c4bdd9e3636271961ee341193c6764",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 337
+    },
+    {
+      "server_id": "everything",
+      "package": "@modelcontextprotocol/server-everything",
+      "version": "2.1.0",
+      "tool": "trigger-list-changed",
+      "digest": "2207790139c679715c56777604eb51ca3dc15f7ab221e72ed34d6b900aeb11a3",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 232
+    },
+    {
+      "server_id": "everything",
+      "package": "@modelcontextprotocol/server-everything",
+      "version": "2.1.0",
+      "tool": "trigger-log-messages",
+      "digest": "37fdf520216b1de57c855db2524e1ff185ec9d3441bd890dc83244fd032b4515",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 384
+    },
+    {
+      "server_id": "everything",
+      "package": "@modelcontextprotocol/server-everything",
+      "version": "2.1.0",
+      "tool": "trigger-long-running-operation",
+      "digest": "741ff8c4e9871a4f20956993ce54384e88997c3d6f4a0cd81e10e49e171fefe6",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 60
+    },
+    {
+      "server_id": "everything",
+      "package": "@modelcontextprotocol/server-everything",
+      "version": "2.1.0",
+      "tool": "trigger-resource-update",
+      "digest": "e241aee9afe39c3529344b52e47f521f7c3af07e93ec3755ec9afc57c4c5619f",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 266
+    },
+    {
+      "server_id": "everything",
+      "package": "@modelcontextprotocol/server-everything",
+      "version": "2.1.0",
+      "tool": "toggle-simulated-logging",
+      "digest": "ba8e918e977dedbee589912c7cf5885672dea810a10277c4ef39dc1122b1ae19",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 210
+    },
+    {
+      "server_id": "everything",
+      "package": "@modelcontextprotocol/server-everything",
+      "version": "2.1.0",
+      "tool": "toggle-subscriber-updates",
+      "digest": "f777494a6f778900851def5161a1f8d3f30591a1b3827ce95bc42cbd7b56bc63",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 228
+    },
+    {
+      "server_id": "filesystem",
+      "package": "@modelcontextprotocol/server-filesystem",
+      "version": "2.1.0",
+      "tool": "read_file",
+      "digest": "cda04d38674b4661ae4144905090dd90a23522120e48189e02bcd9e6cef1c1c1",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 85
+    },
+    {
+      "server_id": "filesystem",
+      "package": "@modelcontextprotocol/server-filesystem",
+      "version": "2.1.0",
+      "tool": "read_text_file",
+      "digest": "aefe5b37b697f0746efe34a180b5fd4b9f18566494f1b9d9ccff63fb70e68dab",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 457
+    },
+    {
+      "server_id": "filesystem",
+      "package": "@modelcontextprotocol/server-filesystem",
+      "version": "2.1.0",
+      "tool": "read_media_file",
+      "digest": "9000c2ae618589c45047243ad21b011ed52da884ff14d29d06e0a57869aa500f",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 234
+    },
+    {
+      "server_id": "filesystem",
+      "package": "@modelcontextprotocol/server-filesystem",
+      "version": "2.1.0",
+      "tool": "read_multiple_files",
+      "digest": "c66c1055848518c7c2c43b3e8ac597f4635f69545ec41364842602f4558b3cc0",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 324
+    },
+    {
+      "server_id": "filesystem",
+      "package": "@modelcontextprotocol/server-filesystem",
+      "version": "2.1.0",
+      "tool": "write_file",
+      "digest": "b3b9ad50a263d1504105a98b0e6c605359bbe45e0da831d44688039c68385f56",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 228
+    },
+    {
+      "server_id": "filesystem",
+      "package": "@modelcontextprotocol/server-filesystem",
+      "version": "2.1.0",
+      "tool": "edit_file",
+      "digest": "dda1e1030955774d21f7c1915426803a4afcad9f8118017d61671bded0e7ef45",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 185
+    },
+    {
+      "server_id": "filesystem",
+      "package": "@modelcontextprotocol/server-filesystem",
+      "version": "2.1.0",
+      "tool": "create_directory",
+      "digest": "9f937db6261ff16eacb4f4020ede61d42fa5ab2a46de2958423135a3cac14f42",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 310
+    },
+    {
+      "server_id": "filesystem",
+      "package": "@modelcontextprotocol/server-filesystem",
+      "version": "2.1.0",
+      "tool": "list_directory",
+      "digest": "12d800fa98e379f93cd523d2e659fc986e40a2b8100b1f963db6928ded50de8c",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 309
+    },
+    {
+      "server_id": "filesystem",
+      "package": "@modelcontextprotocol/server-filesystem",
+      "version": "2.1.0",
+      "tool": "list_directory_with_sizes",
+      "digest": "c0026f6bd642799c98a678ca600491a98b119535d24ca6d2f68852dc780ff150",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 323
+    },
+    {
+      "server_id": "filesystem",
+      "package": "@modelcontextprotocol/server-filesystem",
+      "version": "2.1.0",
+      "tool": "directory_tree",
+      "digest": "2db7f83eb011519aba3d138ff4f06392a15acb5e5ab37ad121c4d06710d6457d",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 360
+    },
+    {
+      "server_id": "filesystem",
+      "package": "@modelcontextprotocol/server-filesystem",
+      "version": "2.1.0",
+      "tool": "move_file",
+      "digest": "021206cf40c2fdbfd1e39b8521fe3b2ef5b2d9fa817814187f37e7f7d1640093",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 325
+    },
+    {
+      "server_id": "filesystem",
+      "package": "@modelcontextprotocol/server-filesystem",
+      "version": "2.1.0",
+      "tool": "search_files",
+      "digest": "4627c619527fe9294e1b6ca6c34c716da7f19c918094aad1195b451a6f7f5c4d",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 424
+    },
+    {
+      "server_id": "filesystem",
+      "package": "@modelcontextprotocol/server-filesystem",
+      "version": "2.1.0",
+      "tool": "get_file_info",
+      "digest": "22faa08e37bed9edd4ad886ae5cfcbd102d20a969cfb829855386776f68180a4",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 312
+    },
+    {
+      "server_id": "filesystem",
+      "package": "@modelcontextprotocol/server-filesystem",
+      "version": "2.1.0",
+      "tool": "list_allowed_directories",
+      "digest": "ee2b67b8cc4571204c8ce38963852c335e3331461e458d60345969e1a42222ca",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 248
+    },
+    {
+      "server_id": "memory",
+      "package": "@modelcontextprotocol/server-memory",
+      "version": "2.0.1",
+      "tool": "create_entities",
+      "digest": "26b7770d83f316c902a10f12b33a610a36831182b6545f2a120ac128cdd77bdb",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 296
+    },
+    {
+      "server_id": "memory",
+      "package": "@modelcontextprotocol/server-memory",
+      "version": "2.0.1",
+      "tool": "create_relations",
+      "digest": "f9617e5693a8b5739564f98e18522fb2d239bf7b29d3ad9b83a504dd85c6a85c",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 106
+    },
+    {
+      "server_id": "memory",
+      "package": "@modelcontextprotocol/server-memory",
+      "version": "2.0.1",
+      "tool": "add_observations",
+      "digest": "e37925de8aaf7c8fe7d996307eb1192e545502713014ff1907aa809c515208f3",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 64
+    },
+    {
+      "server_id": "memory",
+      "package": "@modelcontextprotocol/server-memory",
+      "version": "2.0.1",
+      "tool": "delete_entities",
+      "digest": "0d9a23655f1dc1e744d4b1dfb1c11f3e816a1786f65544db2d5c786176e6ef19",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 80
+    },
+    {
+      "server_id": "memory",
+      "package": "@modelcontextprotocol/server-memory",
+      "version": "2.0.1",
+      "tool": "delete_observations",
+      "digest": "6244d1312b784772089ee5d99302fa59ec8e43ba4642462f52721b7490d6bb4f",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 65
+    },
+    {
+      "server_id": "memory",
+      "package": "@modelcontextprotocol/server-memory",
+      "version": "2.0.1",
+      "tool": "delete_relations",
+      "digest": "7b0611027eba9266069083ea149227aadf223ffc47df76cf5ef06fb66e55b3d9",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 50
+    },
+    {
+      "server_id": "memory",
+      "package": "@modelcontextprotocol/server-memory",
+      "version": "2.0.1",
+      "tool": "read_graph",
+      "digest": "21c6b22ef496ba1e3fe112374f93b0cbe6ad77c5484fc9903ca85e91755c1c99",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 31
+    },
+    {
+      "server_id": "memory",
+      "package": "@modelcontextprotocol/server-memory",
+      "version": "2.0.1",
+      "tool": "search_nodes",
+      "digest": "dc719ce02633f209c30f91f6c628dfb39653eaf866e495ed6279e4d4b6188f8c",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 56
+    },
+    {
+      "server_id": "memory",
+      "package": "@modelcontextprotocol/server-memory",
+      "version": "2.0.1",
+      "tool": "open_nodes",
+      "digest": "2a6947579a43f30ebb7d3cf0ae1dce37a9baa81d94e985214fac24b85903ebfe",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 57
+    },
+    {
+      "server_id": "sequential-thinking",
+      "package": "@modelcontextprotocol/server-sequential-thinking",
+      "version": "2.0.0",
+      "tool": "sequentialthinking",
+      "digest": "8ea72b853eb11971c6f5274189f43130df847083834c87659e089b2acc672ad2",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 2781
+    },
+    {
+      "server_id": "fetch",
+      "package": "mcp-server-fetch",
+      "version": "2026.10.28",
+      "tool": "fetch",
+      "digest": "4f892d480dfded7e2dc21d7047b76dd143e35083649c3cae994e40b6f16e64e7",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 307
+    },
+    {
+      "server_id": "git",
+      "package": "mcp-server-git",
+      "version": "2026.10.28",
+      "tool": "git_status",
+      "digest": "d292ed30fc99b5157b6fa7c925899fe7bfedcc0b58e4653a393c1d036b1fd36b",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 29
+    },
+    {
+      "server_id": "git",
+      "package": "mcp-server-git",
+      "version": "2026.10.28",
+      "tool": "git_diff_unstaged",
+      "digest": "1ef5590b072478df239fbbf6b0faa7a28e63a7e3e26c715cdeb6a355675750a6",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 62
+    },
+    {
+      "server_id": "git",
+      "package": "mcp-server-git",
+      "version": "2026.10.28",
+      "tool": "git_diff_staged",
+      "digest": "38af9bbe5ac0e2acca657bdad614858f419fd442218735c648e7ad16df898704",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 40
+    },
+    {
+      "server_id": "git",
+      "package": "mcp-server-git",
+      "version": "2026.10.28",
+      "tool": "git_diff",
+      "digest": "7c2a9d9bb184ea7836fa631483e8ea58603ca1f9774b737e285e1691b982257c",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 45
+    },
+    {
+      "server_id": "git",
+      "package": "mcp-server-git",
+      "version": "2026.10.28",
+      "tool": "git_commit",
+      "digest": "2fa7efea887c19668219b946aad8d24a1b2e9c4c4942b13f47a5e39024669e90",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 33
+    },
+    {
+      "server_id": "git",
+      "package": "mcp-server-git",
+      "version": "2026.10.28",
+      "tool": "git_add",
+      "digest": "a86b2f7daf5d039eefeca0d5574eae81f43a0c2e2dc5e8b073f3fb658e60f8b9",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 38
+    },
+    {
+      "server_id": "git",
+      "package": "mcp-server-git",
+      "version": "2026.10.28",
+      "tool": "git_reset",
+      "digest": "a71a619f31bbb1f0c0d9e58f688006d4715b227edfc4f7b5fada02c5cb9752b9",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 27
+    },
+    {
+      "server_id": "git",
+      "package": "mcp-server-git",
+      "version": "2026.10.28",
+      "tool": "git_log",
+      "digest": "536e416c7b77cf320fb05f2f2c473edc4611b82af7a89790ca4b4e4dbe9a9650",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 21
+    },
+    {
+      "server_id": "git",
+      "package": "mcp-server-git",
+      "version": "2026.10.28",
+      "tool": "git_create_branch",
+      "digest": "db425515abce4f611d939ae0ccaa10f96de93a3eb194507160adef6b8f8e151f",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 59
+    },
+    {
+      "server_id": "git",
+      "package": "mcp-server-git",
+      "version": "2026.10.28",
+      "tool": "git_checkout",
+      "digest": "2e762dffe65efc75c5d8ef7d5609cf952b85fe7ea17439d3a72e707c984187b2",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 17
+    },
+    {
+      "server_id": "git",
+      "package": "mcp-server-git",
+      "version": "2026.10.28",
+      "tool": "git_show",
+      "digest": "ceb9cda34c1041083e52d1299ee570facac307d6707dcf052c7715a5b3e42ac6",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 84
+    },
+    {
+      "server_id": "git",
+      "package": "mcp-server-git",
+      "version": "2026.10.28",
+      "tool": "git_branch",
+      "digest": "25e97d356a99c76feb234aa356323aae1fa6d8c133804bb35ceabd66530d8de7",
+      "flagged": false,
+      "rules": [],
+      "anchors": [],
+      "desc_len": 17
+    }
+  ],
+  "interpretation": "这 53 个工具都来自官方参考 server，都是良性工具。所以本表只能读成误报率，不能读成召回率——语料里没有毒工具。"
+}

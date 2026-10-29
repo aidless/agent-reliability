@@ -62,6 +62,7 @@
 | 三仓提交 | mcp-guard `13ae914`、auditable-llm-eval `f7e00d2`，**均已 push** | 两仓 CI 全绿（mcp-guard: ci + mutation-control；auditable: checks + release-validate + mutation-control） |
 | 敏感锚点 | mcp-guard 命中身份改为 `(规则 id, anchor)`，修掉"纯措辞改动判 BLOCK" | mcp-guard 测试 19 → 23；6 个探针全符合预期 |
 | M4 覆盖率 | `scripts/redteam_coverage.py` + `redteam.json` 契约 | 50 条样本 → 覆盖 1 / 不覆盖 49，**2%** |
+| 真实模型输出 | `scripts/run_real_model_eval.py`，两个真实模型 × 2 个数据集 | naive 3/3 全绿 + 权威 0.83/0.89（检查器语言脆性）；双语容错后 1.0，裁决 BLOCK→REVIEW |
 | 决策全组合 | `scripts/joint_decision_matrix.py`：11 维笛卡尔积 → 540 个可行组合 | 查出并修掉两个门禁绕过：`INCOMPLETE` 排序、`R10` 证据回退；删证据不变量 0 违反 |
 | 受控注入召回 | `scripts/injected_recall.py`：50 条公开载荷 × 53 个真实工具 × 3 个位置 | in-dist `14/19 = 73.68%`，OOD `53/2650 = 2.00%`；且 2% 全部由 `V05_004` 一条载荷贡献 |
 | 真实 MCP 语料 | `scripts/collect_mcp_tools.py`（npm --ignore-scripts + `unshare --net`，只发 initialize/tools/list）+ `scripts/scan_real_corpus.py` | 6 个官方 server / **53 个真实工具 → 0 误报**；CI 用 `--fail-if-flagged` 锁住这个不变量 |

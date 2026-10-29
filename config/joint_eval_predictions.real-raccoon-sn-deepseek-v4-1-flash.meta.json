@@ -1,0 +1,8 @@
+{
+  "model": "raccoon/sn-deepseek-v4-1-flash",
+  "generated_utc": "2026-10-29T07:00:10+00:00",
+  "temperature": 0,
+  "max_tokens": 1200,
+  "count": 3,
+  "predictions_file": "joint_eval_predictions.real-raccoon-sn-deepseek-v4-1-flash.jsonl"
+}
