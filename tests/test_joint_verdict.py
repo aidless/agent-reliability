@@ -584,6 +584,40 @@ class TestSchemaCrossValidation(unittest.TestCase):
                                  f"本实现与参照实现 jsonschema 结论不一致：{schema_name}")
 
 
+class TestRealCorpus(unittest.TestCase):
+    """真实 MCP 工具定义语料 + 扫描结果的回归锁。
+
+    语料由 `scripts/collect_mcp_tools.py` 采集（真实 `tools/list`），
+    扫描由 `scripts/scan_real_corpus.py` 产出。这里只锁结构一致性——
+    不重新跑 mcp-guard，所以 `gates` job 不需要上游仓。
+    """
+
+    CORPUS = ROOT / "corpus" / "mcp-tools-20261028.json"
+    SCAN = ROOT / "reports" / "real-mcp-scan-20261028.json"
+
+    def test_corpus_is_structurally_sound(self):
+        corpus = json.loads(self.CORPUS.read_text(encoding="utf-8"))
+        self.assertEqual(len(corpus["servers"]), 6)
+        self.assertEqual(corpus["failures"], [])
+        for server in corpus["servers"]:
+            self.assertEqual(server["tool_count"], len(server["tools"]),
+                             f"{server['server_id']} 的 tool_count 与 tools 长度不符")
+            for tool in server["tools"]:
+                self.assertTrue(tool["name"], "工具必须有名字")
+        self.assertEqual(corpus["total_tools"],
+                         sum(s["tool_count"] for s in corpus["servers"]))
+
+    def test_real_benign_tools_are_not_flagged(self):
+        """53 个真实良性工具必须零误报；这条红了就说明规则包开始误伤真实工具。"""
+        scan = json.loads(self.SCAN.read_text(encoding="utf-8"))
+        corpus = json.loads(self.CORPUS.read_text(encoding="utf-8"))
+        self.assertEqual(scan["corpus_file"], self.CORPUS.name)
+        self.assertEqual(scan["total_tools"], corpus["total_tools"])
+        self.assertEqual(scan["flagged_tools"], 0,
+                         f"真实语料上出现误报：{scan['rule_counts']}")
+        self.assertEqual(sum(s["flagged"] for s in scan["per_server"]), 0)
+
+
 class TestRealRuns(unittest.TestCase):
     """真实 run 产物：必须过契约；手改裁决必须被抓出来。"""
 

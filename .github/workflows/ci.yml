@@ -157,6 +157,11 @@ jobs:
           print("redteam coverage:", f"{rt['covered']}/{rt['total_samples']}")
           PY
 
+      # 真实良性工具零误报：任何一条规则开始误伤 53 个真实工具，这里就红。
+      - name: 真实 MCP 语料零误报
+        working-directory: platform
+        run: python scripts/scan_real_corpus.py --mcp-guard-repo ../_deps/mcp-guard --fail-if-flagged
+
   # 非阻塞告警：上游 main 的规则包变了，说明 runs/ 里的产物已经过期。
   # 这个 job 红掉不影响 CI 结论，只是提醒"该重跑三连跑了"。
   upstream-drift:

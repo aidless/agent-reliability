@@ -27,12 +27,13 @@
 
 | 数字 | 复算命令 | 输出 |
 |---|---|---|
-| 平台层测试 49 | `cd ~/work/agent-reliability && python3 -m unittest discover -s tests` | `Ran 49 tests ... OK` |
+| 平台层测试 51 | `cd ~/work/agent-reliability && python3 -m unittest discover -s tests` | `Ran 51 tests ... OK` |
 | 契约校验 3 个 run | `cd ~/work/agent-reliability && python3 contracts/validate.py --all` | `20261028-r1-baseline OK`、`r2-joint OK`、`r3-drift OK`，`全部通过（3 个 run）` |
 | 变异控制 14/14 抓到 | `cd ~/work/agent-reliability && python3 scripts/mutation_control.py` | `全部 14 个变异都被测试抓到（测试有牙齿）。` |
 | 攻击剧本覆盖率 | `cd ~/work/agent-reliability && python3 scripts/redteam_coverage.py --quiet` | `covered 1 / total 50`，`coverage_rate 0.02`（V05_004 命中 `auth-url-exec`） |
 | 敏感锚点不变量 | `cd ~/mcp-guard && python3 -m pytest tests/ -q` | `23 passed`（含 3 个无害改写 `alarm=False`、3 个真换载荷 `alarm=True`、80 字符截断不受影响） |
 | 决策函数全组合 | `cd ~/work/agent-reliability && python3 scripts/joint_decision_matrix.py` | `可行 540 / 原始 2304`；naive 基线降级 `236/240 = 0.9833`；权威基线 `232/240 = 0.9667`；删证据违反 `0` 对（无基线不可知 12 对） |
+| 真实 MCP 语料误报 | `cd ~/work/agent-reliability && python3 scripts/scan_real_corpus.py --fail-if-flagged` | `6 个 server / 53 个工具，被 flag 0 = 0.0`（零误报） |
 | 评分器版本 | `cd ~/work/agent-reliability && python3 -c "import json;print(json.load(open('runs/20261028-r2-joint/meta.json'))['scorer_version'])"` | `62b240b797547d69`（`copilot/score_copilot_run_v2.py` 的 sha256 前 16 位） |
 | 联合裁决 r2 | `cd ~/work/agent-reliability && python3 -c "import json;d=json.load(open('runs/20261028-r2-joint/joint_verdict.json'));print(d['decision']['verdict'],d['decision']['rule_id'])"` | `BLOCK R2-false-green-over-untrusted-tools` |
 | 联合裁决 r1（缺输出层） | 同上，换 `runs/20261028-r1-baseline` | `INCOMPLETE R8-missing-evidence`（R4 同时命中，`missing_evidence=["output_audit"]`） |

@@ -18,7 +18,7 @@
 
 ```bash
 cd agent-reliability
-python3 -m unittest discover -s tests   # 49 passed
+python3 -m unittest discover -s tests   # 51 passed
 python3 contracts/validate.py --all     # 3 个 run 全过
 python3 scripts/mutation_control.py     # 14/14 变异被抓
 ```
@@ -43,18 +43,22 @@ CI 有两个 job：`gates`（双 Python 腿，不依赖上游）与 `e2e-smoke`�
     │   ├── jsonschema_mini.py         # 零依赖校验器（平台层不引第三方依赖）
     │   └── validate.py                # 校验三份产物 + 重算裁决并比对
     ├── rules/                  # M2 联合裁决层：规则是数据，引擎只求值
-    │   ├── joint_verdict.json         # R1–R8 八条规则 + verdict_precedence
+    │   ├── joint_verdict.json         # R1–R10 十条规则 + verdict_precedence
     │   └── engine.py                  # derive_evidence / evaluate / decide
-    ├── tests/test_joint_verdict.py     # 49 个测试（契约 + 裁决 + 真实产物 + M4）
+    ├── tests/test_joint_verdict.py     # 51 个测试（契约 + 裁决 + 真实产物 + M4 + 真实语料）
     ├── runs/                        # 每次运行的完整产物
-    │   ├── 20261028-r1-baseline/    #   缺输出层 → REVIEW（缺证据 ≠ 通过）
+    │   ├── 20261028-r1-baseline/    #   缺输出层 → INCOMPLETE（缺证据 ≠ 通过）
     │   ├── 20261028-r2-joint/       #   假绿 → BLOCK（R2）
-    │   ├── 20261028-r3-drift/       #   漂移 → BLOCK（R5 可见，R1 不触发）
+    │   ├── 20261028-r3-drift/       #   漂移 → BLOCK（R1：ssh → aws）
     │   └── _archive/                #   历史产物（`_` 前缀，校验与测试都会跳过）
+    ├── corpus/                      # 真实 MCP server 的 tools/list 原样采集
     ├── reports/                     # 基线快照、消融测量、联合实验报告
     ├── scripts/
     │   ├── measure_rule_ablation.py   # 规则消融：摘掉一条规则重算指标
     │   ├── redteam_coverage.py        # M4：agent-redteam 剧本 → 规则覆盖率两张表
+    │   ├── collect_mcp_tools.py       # 采集真实 server 的 tools/list（无网络沙箱内）
+    │   ├── scan_real_corpus.py        # 用规则包扫真实语料，测误报
+    │   ├── joint_decision_matrix.py   # 决策函数全组合枚举（540 个可行组合）
     │   └── mutation_control.py        # 门禁自证：改坏实现，断言测试变红
     ├── baseline.md                  # D1 基线（每个数字对应一条可复算命令）
     ├── WEEK1_PLAN.md                # D1–D7 逐日清单：目标 / 交付物 / 验收 / 停止规则
@@ -147,6 +151,33 @@ D7 提案里写的两条最小契约，现在已经落到可执行文件（**只
 > 它只能回答"决策函数覆盖了哪些状态"；现实发生率要靠真实 run 语料。
 > 详见 [`reports/2026-10-28-joint-decision-matrix.md`](./reports/2026-10-28-joint-decision-matrix.md)。
 
+### 真实 MCP 工具定义扫描（第一次用真实输入测误报）
+
+`scripts/collect_mcp_tools.py` 从 6 个官方参考 MCP server 采集真实的 `tools/list`，
+版本钉死；`scripts/scan_real_corpus.py` 用规则包扫这批工具。
+
+采集的隔离措施（细节见脚本头部的威胁模型）：`npm install --ignore-scripts` /
+`uv tool install` 装包 → `unshare --user --map-root-user --net` 运行（namespaces
+内只有 loopback）→ **只发 `initialize` + `tools/list`，从不 `tools/call`** →
+HOME 与 cwd 都是临时目录。
+
+| server | 工具数 | 被 flag |
+|---|---:|---:|
+| everything / filesystem / memory / sequential-thinking / fetch / git | 16 / 14 / 9 / 1 / 1 / 12 | 0 / 0 / 0 / 0 / 0 / 0 |
+| **合计** | **53** | **0** |
+
+**53 个真实良性工具，零误报。** 其中 21 个工具描述里出现了
+"key / token / secret / credential / env / file" 这类词却都没被命中——最尖锐的是
+`everything/get-env`：它字面上就在列环境变量、字面上提到 KEY/TOKEN/SECRET，
+规则包**没有**命中它，因为它没有"把凭据读出来塞进参数/发出去"的指令。
+这正好说明规则抓的是**外带动作**，不是敏感词。
+
+CI 里 `python3 scripts/scan_real_corpus.py --fail-if-flagged` 是硬门禁：
+任何一条规则开始误伤这 53 个真实工具，CI 就会红。
+
+> 这只测**误报**，不测召回——语料里没有一条毒工具。
+> 报告：[`reports/2026-10-28-real-mcp-scan.md`](./reports/2026-10-28-real-mcp-scan.md)
+
 ## M4：攻击剧本覆盖率（接 agent-redteam）
 
 `scripts/redteam_coverage.py` 把 `aidless/agent-redteam` 的 12 个向量 / 50 条样本
@@ -180,8 +211,8 @@ D7 提案里写的两条最小契约，现在已经落到可执行文件（**只
 
 | job | 跑什么 | 为什么要分开 |
 |---|---|---|
-| `gates` | 49 个平台测试 + `contracts/validate.py --all` + `scripts/mutation_control.py`（Python 3.10 与 3.12 两条腿） | **不依赖上游**：只读已提交的 `runs/` 产物，上游不可达或改了都不影响这一层 |
-| `e2e-smoke` | 把三仓钉到 `runs/*/meta.json` 记录的 commit，真跑**三连跑**（r1 无基线 → r2 基线 r1 → r3 基线 r2），断言：缺层不判 `PASS`、假绿判 `BLOCK`、漂移换载荷由 `R1` 判 `BLOCK`、覆盖表落盘 | 证明**记录的产物可以复现**；因为钉了 ref，上游改代码不会误报红 |
+| `gates` | 51 个平台测试 + `contracts/validate.py --all` + `scripts/mutation_control.py`（Python 3.10 与 3.12 两条腿） | **不依赖上游**：只读已提交的 `runs/` 产物，上游不可达或改了都不影响这一层 |
+| `e2e-smoke` | 把三仓钉到 `runs/*/meta.json` 记录的 commit，真跑**三连跑**（r1 无基线 → r2 基线 r1 → r3 基线 r2），断言：缺层不判 `PASS`、假绿判 `BLOCK`、漂移换载荷由 `R1` 判 `BLOCK`、覆盖表落盘、**真实语料零误报** | 证明**记录的产物可以复现**；因为钉了 ref，上游改代码不会误报红 |
 | `upstream-drift` | 拿上游 `main` 的 `guard/rules.py` 重算 `rules_version`，与产物里记的比 | **非阻塞告警**：红掉只说明 `runs/` 已过期，该重跑三连跑了 |
 
 变异自证是这套 CI 的重点：`scripts/mutation_control.py` 逐个注入 14 个变异
