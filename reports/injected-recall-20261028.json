@@ -1,0 +1,118 @@
+{
+  "generated_utc": "2026-10-29T06:31:36+00:00",
+  "carrier": {
+    "source": "2026-10-29T05:48:48+00:00",
+    "servers": 6,
+    "tools": 53
+  },
+  "payloads": {
+    "source": "aidless/agent-redteam data/attack_vectors.json",
+    "vectors": 12,
+    "samples": 50
+  },
+  "controls": {
+    "baseline_unmodified_tools": {
+      "n": 1,
+      "flagged": 0,
+      "rate": 0.0
+    },
+    "benign_appended_filler": {
+      "n": 1,
+      "flagged": 0,
+      "rate": 0.0
+    },
+    "in_distribution_poison_cases": {
+      "n": 19,
+      "flagged": 14,
+      "rate": 0.7368
+    }
+  },
+  "out_of_distribution": {
+    "total": {
+      "n": 7950,
+      "flagged": 159,
+      "rate": 0.02
+    },
+    "by_placement": {
+      "append": {
+        "n": 2650,
+        "flagged": 53,
+        "rate": 0.02
+      },
+      "prepend": {
+        "n": 2650,
+        "flagged": 53,
+        "rate": 0.02
+      },
+      "replace": {
+        "n": 2650,
+        "flagged": 53,
+        "rate": 0.02
+      }
+    },
+    "by_vector": {
+      "V01_direct_prompt_injection": {
+        "n": 795,
+        "flagged": 0,
+        "rate": 0.0
+      },
+      "V02_indirect_prompt_injection": {
+        "n": 795,
+        "flagged": 0,
+        "rate": 0.0
+      },
+      "V03_jailbreak_templates": {
+        "n": 954,
+        "flagged": 0,
+        "rate": 0.0
+      },
+      "V04_role_hijack": {
+        "n": 477,
+        "flagged": 0,
+        "rate": 0.0
+      },
+      "V05_tool_call_redirection": {
+        "n": 795,
+        "flagged": 159,
+        "rate": 0.2
+      },
+      "V06_memory_poisoning": {
+        "n": 636,
+        "flagged": 0,
+        "rate": 0.0
+      },
+      "V07_output_exfiltration": {
+        "n": 795,
+        "flagged": 0,
+        "rate": 0.0
+      },
+      "V08_aggregator_capture": {
+        "n": 477,
+        "flagged": 0,
+        "rate": 0.0
+      },
+      "V09_sybil_agent": {
+        "n": 318,
+        "flagged": 0,
+        "rate": 0.0
+      },
+      "V10_prompt_leakage": {
+        "n": 636,
+        "flagged": 0,
+        "rate": 0.0
+      },
+      "V11_resource_exhaustion": {
+        "n": 636,
+        "flagged": 0,
+        "rate": 0.0
+      },
+      "V12_compositional": {
+        "n": 636,
+        "flagged": 0,
+        "rate": 0.0
+      }
+    }
+  },
+  "interpretation": "append/prepend/replace 是 out-of-distribution：载荷原本面向提示注入，不是工具投毒。这里的召回衡量的是通用性，不是原生攻击面上的检出率。in_distribution_poison_cases 是规则设计时参照的那批样例，两者不可相加。",
+  "rows_tsv": "injected-recall-20261028.tsv"
+}

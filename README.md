@@ -178,6 +178,29 @@ CI 里 `python3 scripts/scan_real_corpus.py --fail-if-flagged` 是硬门禁：
 > 这只测**误报**，不测召回——语料里没有一条毒工具。
 > 报告：[`reports/2026-10-28-real-mcp-scan.md`](./reports/2026-10-28-real-mcp-scan.md)
 
+### 受控注入召回：73.7% vs 2.0%
+
+把 `aidless/agent-redteam` 的 **50 条公开攻击载荷**注入上面那 **53 个真实工具**
+（append / prepend / replace 三种位置），同时给三个对照：
+
+| 测量 | 结果 |
+|---|---|
+| 基线：未改动的真实工具 | `0 / 53` 命中 |
+| 良性对照：追加中性话 | `0 / 53` 命中（追加动作本身不触发） |
+| **in-distribution**：mcp-guard 自己的 19 条毒用例 | **14 / 19 = 73.68%** |
+| **out-of-distribution**：公开载荷注入真实工具 | **53 / 2650 = 2.00%** |
+
+**差 37 倍。** 那 2% 不是分散的——**全部由 `V05_004` 一条载荷撑起来**
+（它里面直接写着 `os.system(...)`），其余 49 条载荷在任何真实工具上都没被命中。
+
+这个 2.0% 与 M4 的覆盖率 2%（1/50）是**两条独立测量路径的一致结果**，
+不是同一次测量的巧合。
+
+> 两个数字必须一起报：只报 73.7% 会假装规则通用，只报 2% 会忽略它在自己的
+> 目标模式上是有效的。这 50 条载荷原本面向**提示注入**，塞进工具描述属于
+> out-of-distribution 测试，不是它们在原生攻击面的检出率。
+> 报告：[`reports/2026-10-28-injected-recall.md`](./reports/2026-10-28-injected-recall.md)
+
 ## M4：攻击剧本覆盖率（接 agent-redteam）
 
 `scripts/redteam_coverage.py` 把 `aidless/agent-redteam` 的 12 个向量 / 50 条样本

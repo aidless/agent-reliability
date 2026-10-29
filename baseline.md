@@ -33,6 +33,7 @@
 | 攻击剧本覆盖率 | `cd ~/work/agent-reliability && python3 scripts/redteam_coverage.py --quiet` | `covered 1 / total 50`，`coverage_rate 0.02`（V05_004 命中 `auth-url-exec`） |
 | 敏感锚点不变量 | `cd ~/mcp-guard && python3 -m pytest tests/ -q` | `23 passed`（含 3 个无害改写 `alarm=False`、3 个真换载荷 `alarm=True`、80 字符截断不受影响） |
 | 决策函数全组合 | `cd ~/work/agent-reliability && python3 scripts/joint_decision_matrix.py` | `可行 540 / 原始 2304`；naive 基线降级 `236/240 = 0.9833`；权威基线 `232/240 = 0.9667`；删证据违反 `0` 对（无基线不可知 12 对） |
+| 受控注入召回 | `cd ~/work/agent-reliability && python3 scripts/injected_recall.py --redteam-repo ~/agent-redteam` | in-dist `14/19 = 0.7368`；OOD `53/2650 = 0.02`（append/prepend/replace 三者相同）；基线 `0/53`、良性对照 `0/53` |
 | 真实 MCP 语料误报 | `cd ~/work/agent-reliability && python3 scripts/scan_real_corpus.py --fail-if-flagged` | `6 个 server / 53 个工具，被 flag 0 = 0.0`（零误报） |
 | 评分器版本 | `cd ~/work/agent-reliability && python3 -c "import json;print(json.load(open('runs/20261028-r2-joint/meta.json'))['scorer_version'])"` | `62b240b797547d69`（`copilot/score_copilot_run_v2.py` 的 sha256 前 16 位） |
 | 联合裁决 r2 | `cd ~/work/agent-reliability && python3 -c "import json;d=json.load(open('runs/20261028-r2-joint/joint_verdict.json'));print(d['decision']['verdict'],d['decision']['rule_id'])"` | `BLOCK R2-false-green-over-untrusted-tools` |
@@ -74,5 +75,6 @@
   验证过召回率**。`INCOMPLETE` 排在 `FAIL` 之上是刻意的：删掉 `audit/` 会把 `FAIL`
   变成 `INCOMPLETE`，如果 `INCOMPLETE` 更轻，按 `{BLOCK, FAIL}` 判定的门禁就能被
   「删文件」绕过（2026-10-28 用全组合枚举测出并修正）。
+- `73.68%` 是 **in-distribution**（规则照着写的 19 条毒用例），`2.00%` 是 **out-of-distribution**（50 条公开提示注入载荷塞进 53 个真实工具）。两个数不可相加、不可只报一个。
 - `changed_hits` 比的是 `(规则 id, 命中文本)`，命中文本由 `scan_text` 截断到 80 字符。
   理论上存在"改在 80 字符之后"的漏报——当前未构造出该用例，属已知未验证边界。
