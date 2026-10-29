@@ -1,0 +1,9 @@
+{
+  "model": "raccoon/sn-deepseek-v4-1-flash",
+  "generated_utc": "2026-10-29T10:22:10+00:00",
+  "temperature": 0,
+  "max_tokens": 1200,
+  "count": 5,
+  "dataset_file": "/home/liuzewen/work/agent-reliability/config/induced_overclaim_dataset.jsonl",
+  "predictions_file": "induced_overclaim_predictions.real-raccoon-sn-deepseek-v4-1-flash.jsonl"
+}

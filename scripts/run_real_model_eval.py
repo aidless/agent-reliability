@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""用真实模型跑 `config/joint_eval_dataset.jsonl` 的 3 道题，产出可送进 run.py 的预测。
+"""用真实模型跑指定 JSONL 数据集，产出可送进 run.py 的预测。
 
 为什么需要这个：在此之前 `config/joint_eval_predictions.jsonl` 的 3 条输出是**手写的**，
 所以"auditable 抓假绿"只在构造数据上成立。这个脚本让它变成真实模型的产出。
@@ -9,6 +9,8 @@
 
 用法：
     python3 scripts/run_real_model_eval.py --model raccoon/sn-deepseek-v4-1-flash
+    python3 scripts/run_real_model_eval.py --model raccoon/sn-deepseek-v4-1-flash \
+      --dataset config/induced_overclaim_dataset.jsonl
     python3 scripts/run_real_model_eval.py --model trae-cn/glm-5.3-flash-max
 """
 from __future__ import annotations
@@ -29,6 +31,22 @@ DEFAULT_GATEWAY = "http://127.0.0.1:3425/v1"
 
 def slug(model: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", model.lower()).strip("-")
+
+
+def default_output_path(root: pathlib.Path, dataset: pathlib.Path,
+                        model: str) -> pathlib.Path:
+    """把预测放在数据集旁，并让文件名携带数据集身份，避免实验互相覆盖。"""
+    stem = dataset.stem
+    if stem.endswith("_dataset"):
+        stem = stem[:-len("_dataset")] + "_predictions"
+    else:
+        stem += "_predictions"
+    return root / "config" / f"{stem}.real-{slug(model)}.jsonl"
+
+
+def resolve_output_path(root: pathlib.Path, dataset: pathlib.Path,
+                        model: str, explicit: pathlib.Path | None) -> pathlib.Path:
+    return explicit if explicit is not None else default_output_path(root, dataset, model)
 
 
 def call(gateway: str, model: str, prompt: str,
@@ -57,14 +75,18 @@ def call(gateway: str, model: str, prompt: str,
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", required=True)
+    ap.add_argument("--dataset", type=pathlib.Path,
+                    default=ROOT / "config" / "joint_eval_dataset.jsonl")
+    ap.add_argument("--output", type=pathlib.Path, default=None,
+                    help="预测 JSONL 路径；默认按数据集名自动生成，避免覆盖别的实验")
     ap.add_argument("--gateway", default=DEFAULT_GATEWAY)
     ap.add_argument("--max-tokens", type=int, default=1200)
     ap.add_argument("--timeout", type=int, default=180)
     args = ap.parse_args()
 
+    dataset = args.dataset.resolve()
     items = [json.loads(l) for l in
-             (ROOT / "config" / "joint_eval_dataset.jsonl")
-             .read_text(encoding="utf-8").splitlines() if l.strip()]
+             dataset.read_text(encoding="utf-8").splitlines() if l.strip()]
 
     out_rows, failures = [], []
     for item in items:
@@ -93,8 +115,8 @@ def main() -> int:
         print(f"失败 {len(failures)} 条：{failures}", file=sys.stderr)
         return 1
 
-    out = (ROOT / "config" /
-           f"joint_eval_predictions.real-{slug(args.model)}.jsonl")
+    out = resolve_output_path(ROOT, dataset, args.model, args.output)
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in out_rows) + "\n",
                    encoding="utf-8")
     meta = {
@@ -103,6 +125,7 @@ def main() -> int:
         "temperature": 0,
         "max_tokens": args.max_tokens,
         "count": len(out_rows),
+        "dataset_file": str(dataset),
         "predictions_file": out.name,
     }
     out.with_suffix(".meta.json").write_text(
