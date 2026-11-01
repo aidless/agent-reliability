@@ -18,7 +18,7 @@
 
 ```bash
 cd agent-reliability
-python3 -m unittest discover -s tests   # 51 passed
+python3 -m unittest discover -s tests   # 53 passed
 python3 contracts/validate.py --all     # 3 个 run 全过
 python3 scripts/mutation_control.py     # 14/14 变异被抓
 ```
@@ -46,6 +46,7 @@ CI 有两个 job：`gates`（双 Python 腿，不依赖上游）与 `e2e-smoke`�
     │   ├── joint_verdict.json         # R1–R10 十条规则 + verdict_precedence
     │   └── engine.py                  # derive_evidence / evaluate / decide
     ├── tests/test_joint_verdict.py     # 51 个测试（契约 + 裁决 + 真实产物 + M4 + 真实语料）
+    ├── tests/test_real_model_runner.py  # 2 个测试（真实模型 runner 的离线参数/路径）
     ├── runs/                        # 每次运行的完整产物
     │   ├── 20261028-r1-baseline/    #   缺输出层 → INCOMPLETE（缺证据 ≠ 通过）
     │   ├── 20261028-r2-joint/       #   假绿 → BLOCK（R2）
@@ -82,7 +83,7 @@ CI 有两个 job：`gates`（双 Python 腿，不依赖上游）与 `e2e-smoke`�
     # 契约校验：校验三份产物 + 重算裁决并比对（手改过的裁决会被抓出来）
     python3 contracts/validate.py --all
 
-    # 平台层测试（51 个）
+    # 平台层测试（53 个：test_joint_verdict 51 + test_real_model_runner 2）
     python3 -m unittest discover -s tests
 
     # 门禁自证：故意改坏实现，断言测试必须变红（14 个变异）
@@ -260,7 +261,7 @@ R2（工具命中+假绿）依赖输出面证据的实证：证据变干净，�
 
 | job | 跑什么 | 为什么要分开 |
 |---|---|---|
-| `gates` | 51 个平台测试 + `contracts/validate.py --all` + `scripts/mutation_control.py`（Python 3.10 与 3.12 两条腿） | **不依赖上游**：只读已提交的 `runs/` 产物，上游不可达或改了都不影响这一层 |
+| `gates` | 53 个平台测试 + `contracts/validate.py --all` + `scripts/mutation_control.py`（Python 3.10 与 3.12 两条腿） | **不依赖上游**：只读已提交的 `runs/` 产物，上游不可达或改了都不影响这一层 |
 | `e2e-smoke` | 把三仓钉到 `runs/*/meta.json` 记录的 commit，真跑**三连跑**（r1 无基线 → r2 基线 r1 → r3 基线 r2），断言：缺层不判 `PASS`、假绿判 `BLOCK`、漂移换载荷由 `R1` 判 `BLOCK`、覆盖表落盘、**真实语料零误报** | 证明**记录的产物可以复现**；因为钉了 ref，上游改代码不会误报红 |
 | `upstream-drift` | 拿上游 `main` 的 `guard/rules.py` 重算 `rules_version`，与产物里记的比 | **非阻塞告警**：红掉只说明 `runs/` 已过期，该重跑三连跑了 |
 
