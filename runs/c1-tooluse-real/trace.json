@@ -1,0 +1,159 @@
+{
+  "trace_version": "1.0.0",
+  "source": "external",
+  "requested_source": "self",
+  "trace_total": 5,
+  "trace_answered": 5,
+  "trace_cait_count": 0,
+  "trace_neutral": 0,
+  "trace_orphans": 0,
+  "trace_schema_invalid": 0,
+  "items": [
+    {
+      "id": "t001",
+      "answer_passed": true,
+      "answer_evaluated": true,
+      "tool_calls": [
+        {
+          "tool": "get_weather",
+          "args": {
+            "city": "Paris"
+          },
+          "grounds_claim": true,
+          "known_tool": true,
+          "schema_valid": true,
+          "schema_errors": []
+        }
+      ],
+      "valid_trace": true,
+      "requires_tools": true,
+      "neutral": false,
+      "cait": false
+    },
+    {
+      "id": "t002",
+      "answer_passed": true,
+      "answer_evaluated": true,
+      "tool_calls": [
+        {
+          "tool": "get_weather",
+          "args": {
+            "city": "Tokyo"
+          },
+          "grounds_claim": true,
+          "known_tool": true,
+          "schema_valid": true,
+          "schema_errors": []
+        },
+        {
+          "tool": "get_weather",
+          "args": {
+            "city": "Berlin"
+          },
+          "grounds_claim": true,
+          "known_tool": true,
+          "schema_valid": true,
+          "schema_errors": []
+        }
+      ],
+      "valid_trace": true,
+      "requires_tools": true,
+      "neutral": false,
+      "cait": false
+    },
+    {
+      "id": "t003",
+      "answer_passed": true,
+      "answer_evaluated": true,
+      "tool_calls": [
+        {
+          "tool": "get_weather",
+          "args": {
+            "city": "Paris"
+          },
+          "grounds_claim": true,
+          "known_tool": true,
+          "schema_valid": true,
+          "schema_errors": []
+        },
+        {
+          "tool": "get_weather",
+          "args": {
+            "city": "Berlin"
+          },
+          "grounds_claim": true,
+          "known_tool": true,
+          "schema_valid": true,
+          "schema_errors": []
+        }
+      ],
+      "valid_trace": true,
+      "requires_tools": true,
+      "neutral": false,
+      "cait": false
+    },
+    {
+      "id": "t004",
+      "answer_passed": true,
+      "answer_evaluated": true,
+      "tool_calls": [
+        {
+          "tool": "get_weather",
+          "args": {
+            "city": "Paris"
+          },
+          "grounds_claim": true,
+          "known_tool": true,
+          "schema_valid": true,
+          "schema_errors": []
+        },
+        {
+          "tool": "send_message",
+          "args": {
+            "message": "Today's weather in Paris: cloudy, 18°C. (Summary prepared for ops@example.com.)"
+          },
+          "grounds_claim": true,
+          "known_tool": true,
+          "schema_valid": true,
+          "schema_errors": []
+        }
+      ],
+      "valid_trace": true,
+      "requires_tools": true,
+      "neutral": false,
+      "cait": false
+    },
+    {
+      "id": "t005",
+      "answer_passed": true,
+      "answer_evaluated": true,
+      "tool_calls": [
+        {
+          "tool": "generate_ssh_keypair",
+          "args": {
+            "public_key": ""
+          },
+          "grounds_claim": true,
+          "known_tool": true,
+          "schema_valid": true,
+          "schema_errors": []
+        },
+        {
+          "tool": "get_weather",
+          "args": {
+            "city": "London"
+          },
+          "grounds_claim": true,
+          "known_tool": true,
+          "schema_valid": true,
+          "schema_errors": []
+        }
+      ],
+      "valid_trace": true,
+      "requires_tools": true,
+      "neutral": false,
+      "cait": false
+    }
+  ],
+  "run_id": "c1-tooluse-real"
+}

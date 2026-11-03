@@ -118,6 +118,10 @@ def main() -> int:
     ap.add_argument("--tools", required=True, help="MCP 工具定义 JSON")
     ap.add_argument("--dataset", default=None, help="评测集 jsonl（含 reference_checks）")
     ap.add_argument("--predictions", default=None, help="模型输出 jsonl")
+    ap.add_argument("--trace", action="store_true",
+                    help="生成 trace.json（轨迹完整性，可选层）：把答案与已扫描工具面"
+                         "连线，标出「答案满分但过程不可审计」（CAIT）。默认关闭——"
+                         "不开就不产生轨迹证据，历史 run 语义不变。")
     ap.add_argument("--predictions-model", default=None,
                     help="产出该预测的模型 id（写进 meta；不给就是 hand-written）")
     ap.add_argument("--run-id", default=None, help="本次 run 的 id（默认用时间戳）")
@@ -308,6 +312,17 @@ def main() -> int:
             "\n".join(json.dumps(r, ensure_ascii=False) for r in naive_rows) + "\n",
             encoding="utf-8")
 
+        # ---- 轨迹完整性（可选层）：答案对不对 ≠ 过程能不能审计 ----
+        if args_.trace:
+            sys.path.insert(0, str(ROOT / "scripts"))
+            import trace_integrity as _ti  # noqa: E402
+
+            report_rows = _ti.load_jsonl(audit_dir / "report.jsonl")
+            trace = _ti.build_trace(items, predictions, tools, report_rows,
+                                    source="self", run_id=run_id)
+            (run_dir / "trace.json").write_text(
+                json.dumps(trace, ensure_ascii=False, indent=2), encoding="utf-8")
+
         rate = summary.get("overall_reference_check_rate")
         joint["output_audit"] = {
             "total": summary["total"],
@@ -320,6 +335,10 @@ def main() -> int:
             "dataset_conformance_problems": conformance,
             "verdict": "FAIL" if (rate is not None and rate < 1.0) else "PASS",
         }
+        trace_path = run_dir / "trace.json"
+        if trace_path.exists():
+            joint["output_audit"]["trace_integrity"] = json.loads(
+                trace_path.read_text(encoding="utf-8"))
         joint["joint_verdict"] = {
             "naive_green": f"{green}/{len(items)}",
             "input_guard": joint["input_guard"]["verdict"],

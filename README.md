@@ -1,7 +1,12 @@
 # agent-reliability
 
+[![ci](https://github.com/aidless/agent-reliability/actions/workflows/ci.yml/badge.svg)](https://github.com/aidless/agent-reliability/actions/workflows/ci.yml)
+
 **把两个评测仓接成一条可复算的联合裁决链路。** 全离线、零模型调用、零 API key、
 零第三方运行时依赖。
+
+> A three-repo, offline joint verdict chain: tool-surface poisoning × output-surface
+> false-green. 60 tests, 16/16 mutations caught, no API key.
 
 - 工具面 [`aidless/mcp-guard`](https://github.com/aidless/mcp-guard)：工具定义有没有被投毒、有没有发生 rug pull
 - 输出面 [`aidless/auditable-llm-eval`](https://github.com/aidless/auditable-llm-eval)：结论是不是"假绿"、有没有过度宣称
@@ -18,9 +23,9 @@
 
 ```bash
 cd agent-reliability
-python3 -m unittest discover -s tests   # 53 passed
-python3 contracts/validate.py --all     # 3 个 run 全过
-python3 scripts/mutation_control.py     # 14/14 变异被抓
+python3 -m unittest discover -s tests   # 60 passed
+python3 contracts/validate.py --all     # 16 个 run 全过
+python3 scripts/mutation_control.py     # 16/16 变异被抓
 ```
 
 CI 有两个 job：`gates`（双 Python 腿，不依赖上游）与 `e2e-smoke`（checkout 三仓 main，
@@ -40,12 +45,13 @@ CI 有两个 job：`gates`（双 Python 腿，不依赖上游）与 `e2e-smoke`�
     │   ├── tool-evidence.schema.json  # tools.json
     │   ├── joint-verdict.schema.json  # joint_verdict.json
     │   ├── redteam.schema.json        # redteam.json（可选：攻击剧本覆盖表）
+    │   ├── trace.schema.json          # trace.json（可选：轨迹完整性 / CAIT）
     │   ├── jsonschema_mini.py         # 零依赖校验器（平台层不引第三方依赖）
-    │   └── validate.py                # 校验三份产物 + 重算裁决并比对
+    │   └── validate.py                # 校验产物 + 重算裁决并比对
     ├── rules/                  # M2 联合裁决层：规则是数据，引擎只求值
-    │   ├── joint_verdict.json         # R1–R10 十条规则 + verdict_precedence
+    │   ├── joint_verdict.json         # R1–R11 规则 + verdict_precedence
     │   └── engine.py                  # derive_evidence / evaluate / decide
-    ├── tests/test_joint_verdict.py     # 51 个测试（契约 + 裁决 + 真实产物 + M4 + 真实语料）
+    ├── tests/test_joint_verdict.py     # 57 个测试（契约 + 裁决 + 真实产物 + M4 + 真实语料 + 轨迹）
     ├── tests/test_real_model_runner.py  # 2 个测试（真实模型 runner 的离线参数/路径）
     ├── runs/                        # 每次运行的完整产物
     │   ├── 20261028-r1-baseline/    #   缺输出层 → INCOMPLETE（缺证据 ≠ 通过）
@@ -63,7 +69,8 @@ CI 有两个 job：`gates`（双 Python 腿，不依赖上游）与 `e2e-smoke`�
     │   ├── redteam_coverage.py        # M4：agent-redteam 剧本 → 规则覆盖率两张表
     │   ├── collect_mcp_tools.py       # 采集真实 server 的 tools/list（无网络沙箱内）
     │   ├── scan_real_corpus.py        # 用规则包扫真实语料，测误报
-    │   ├── joint_decision_matrix.py   # 决策函数全组合枚举（540 个可行组合）
+    │   ├── joint_decision_matrix.py   # 决策函数全组合枚举（1500 个可行组合）
+    │   ├── trace_integrity.py         # 轨迹完整性：答案对不对 ≠ 过程能不能审计
     │   └── mutation_control.py        # 门禁自证：改坏实现，断言测试变红
     ├── baseline.md                  # D1 基线（每个数字对应一条可复算命令）
     ├── WEEK1_PLAN.md                # D1–D7 逐日清单：目标 / 交付物 / 验收 / 停止规则
@@ -83,10 +90,15 @@ CI 有两个 job：`gates`（双 Python 腿，不依赖上游）与 `e2e-smoke`�
     # 契约校验：校验三份产物 + 重算裁决并比对（手改过的裁决会被抓出来）
     python3 contracts/validate.py --all
 
-    # 平台层测试（53 个：test_joint_verdict 51 + test_real_model_runner 2）
+    # 平台层测试（60 个：test_joint_verdict 58 + test_real_model_runner 2）
     python3 -m unittest discover -s tests
 
-    # 门禁自证：故意改坏实现，断言测试必须变红（14 个变异）
+    # 轨迹完整性（可选层）：答案满分但过程不可审计（CAIT）会被标出
+    python3 run.py --tools config/tools.example.json \
+      --dataset config/joint_eval_dataset.jsonl \
+      --predictions config/joint_eval_predictions.jsonl --run-id demo --trace
+
+    # 门禁自证：故意改坏实现，断言测试必须变红（16 个变异）
     python3 scripts/mutation_control.py
 
     # 规则消融：摘掉某条规则重算指标（不改文件）
@@ -120,7 +132,7 @@ D7 提案里写的两条最小契约，现在已经落到可执行文件（**只
 
 **M2 联合裁决层**（`rules/`）
 
-- 判据是**数据**（`rules/joint_verdict.json` 的 R1–R10），引擎（`rules/engine.py`）
+- 判据是**数据**（`rules/joint_verdict.json` 的 R1–R11），引擎（`rules/engine.py`）
   只负责求值。改判据改 JSON，不改代码。
 - 分级：`BLOCK > INCOMPLETE > FAIL > REVIEW > PASS`。**全部命中的规则都记进
   `matched_rules`**，最终结论取最严重的那一个——"为什么不是 PASS"始终可追溯。
@@ -134,6 +146,23 @@ D7 提案里写的两条最小契约，现在已经落到可执行文件（**只
 | 工具干净 + 假绿 | `FAIL` | R3 |
 | 缺必需证据层 | `INCOMPLETE` | R8 |
 | 上一轮有输出面、这一轮没有 | `BLOCK` | R10 |
+| 答案满分但过程不可审计（CAIT） | `FAIL` | R11（可选层） |
+
+### 轨迹完整性（可选层 / R11）：答案对不对 ≠ 过程能不能审计
+
+答案层（`audit_rate`）只回答"结论对不对"。轨迹层回答另一件事——"支撑结论的过程
+能不能被审计"。`run.py --trace` 时会产出 `trace.json`：
+
+- **CAIT**（Correct Answer / Invalid Trace）：答案满分，但没有任何
+  「已知 + schema 合法 + 支撑结论」的工具调用 → `FAIL` / R11。这一格答案层单独看
+  永远看不见。
+- **来源分两种并绝不混谈**：`self`（离线自证，把答案引用的工具名与本轮已扫描的
+  工具面对号）只证明"引用了真实存在且 schema 合法的工具"，**不等于运行时真的调用过**；
+  需要真实证据链时用 `source=external` 由调用方注入 `tool_calls`。
+- **neutral**：纯推理/总结任务（如 `failure_diagnosis`）不需要工具链，
+  不计 CAIT——否则"不调工具"本身会被误判成缺陷。
+- **为什么是可选层**：`trace.json` 缺失时不判 `INCOMPLETE`，与攻击剧本覆盖层同级。
+  这保证 2026-10-28/29 落盘的 9 个历史 run 判决逐字节不变。
 
 **为什么 `INCOMPLETE` 排在 `FAIL` 之上**：删掉 `audit/` 目录会把 `FAIL` 变成
 `INCOMPLETE`。如果 `INCOMPLETE` 更轻，任何按 `{BLOCK, FAIL}` 判定的门禁都能被
@@ -141,15 +170,17 @@ D7 提案里写的两条最小契约，现在已经落到可执行文件（**只
 
 ### 决策函数的完整组合表
 
-`scripts/joint_decision_matrix.py` 把 11 个证据维度的笛卡尔积全枚举一遍：
-**2304 个原始组合 → 540 个可行组合**（内部矛盾的 1764 个被排除，排除 ≠ 通过）。
+`scripts/joint_decision_matrix.py` 把证据维度的笛卡尔积全枚举一遍。轨迹层加入后是
+**12 维**：**6912 个原始组合 → 1500 个可行组合**（内部矛盾的被排除，排除 ≠ 通过）。
 
     python3 scripts/joint_decision_matrix.py
 
-- 裁决分布：`BLOCK` 360 / `REVIEW` 88 / `FAIL` 72 / `INCOMPLETE` 12 / `PASS` 8
-- 只看 naive 会判 PASS 的 240 个组合里，联合层改判 **236 个（98.3%）**
-- 只看权威分会判 PASS 的 240 个组合里，联合层改判 **232 个（96.7%）**
+- 裁决分布（12 维）：`BLOCK` 984 / `FAIL` 312 / `REVIEW` 176 / `INCOMPLETE` 12 / `PASS` 16
+- 只看 naive 会判 PASS 的 720 个组合里，联合层改判 **712 个（98.89%）**
+- 只看权威分会判 PASS 的 720 个组合里，联合层改判 **704 个（97.78%）**
 - 删证据不变量：有基线可比时违反 **0 对**；无基线不可知 12 对
+
+> 11 维历史版本（2304 → 540，裁决 `BLOCK` 360 / `REVIEW` 88 / `FAIL` 72 / `INCOMPLETE` 12 / `PASS` 8；naive 改判 236 = 98.3%，权威分改判 232 = 96.7%）已作为带标签快照留在 [reports/joint-decision-matrix-11dim-2304to540.json](reports/joint-decision-matrix-11dim-2304to540.json)——从 HEAD `e634c00` 用 git worktree 复现，供对照。
 
 > 注意：这些百分比是**均匀枚举出来的状态空间占比**，不是现实发生率。
 > 网格里每个因子都按 50/50 或三等分取，所以"有漂移"占了一半——现实里远没有这么常见。
@@ -261,7 +292,7 @@ R2（工具命中+假绿）依赖输出面证据的实证：证据变干净，�
 
 | job | 跑什么 | 为什么要分开 |
 |---|---|---|
-| `gates` | 53 个平台测试 + `contracts/validate.py --all` + `scripts/mutation_control.py`（Python 3.10 与 3.12 两条腿） | **不依赖上游**：只读已提交的 `runs/` 产物，上游不可达或改了都不影响这一层 |
+| `gates` | 60 个平台测试 + `contracts/validate.py --all` + `scripts/mutation_control.py`（Python 3.10 与 3.12 两条腿） | **不依赖上游**：只读已提交的 `runs/` 产物，上游不可达或改了都不影响这一层 |
 | `e2e-smoke` | 把三仓钉到 `runs/*/meta.json` 记录的 commit，真跑**三连跑**（r1 无基线 → r2 基线 r1 → r3 基线 r2），断言：缺层不判 `PASS`、假绿判 `BLOCK`、漂移换载荷由 `R1` 判 `BLOCK`、覆盖表落盘、**真实语料零误报** | 证明**记录的产物可以复现**；因为钉了 ref，上游改代码不会误报红 |
 | `upstream-drift` | 拿上游 `main` 的 `guard/rules.py` 重算 `rules_version`，与产物里记的比 | **非阻塞告警**：红掉只说明 `runs/` 已过期，该重跑三连跑了 |
 

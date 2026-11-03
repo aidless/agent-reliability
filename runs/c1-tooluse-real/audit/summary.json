@@ -1,0 +1,10 @@
+{
+  "total": 5,
+  "semantic_scored": 5,
+  "runtime_errors": 0,
+  "overall_reference_check_rate": 1.0,
+  "by_task": {
+    "tool_lookup": 1.0
+  },
+  "items_with_unsupported_claims": 0
+}

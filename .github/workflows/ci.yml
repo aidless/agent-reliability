@@ -56,6 +56,9 @@ jobs:
       - name: 门禁自证（故意改坏实现，测试必须变红）
         run: python scripts/mutation_control.py
 
+      - name: 运行时轨迹层不变量（C1：真实 tool_calls 抗投毒）
+        run: python scripts/check_runtime_invariants.py
+
   e2e-smoke:
     name: e2e-smoke (pinned to recorded commits)
     runs-on: ubuntu-latest

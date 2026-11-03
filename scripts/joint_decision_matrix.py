@@ -45,6 +45,7 @@ DIMS = {
     "audit_excluded": [0, 1],
     "baseline_had_audit": [False, True],
     "attack": ["none", "some", "zero"],
+    "trace": ["none", "cait", "clean"],
 }
 
 
@@ -63,6 +64,8 @@ def feasible(combo: dict) -> bool:
             return False
     elif combo["audit_naive_all_green"] is None:
         return False          # 有输出面就一定有 naive 对照
+    if combo["trace"] != "none" and not combo["audit_present"]:
+        return False          # 轨迹层挂在输出面之下：没有输出面就没有轨迹
     return True
 
 
@@ -97,6 +100,15 @@ def to_evidence(combo: dict) -> dict:
         "attack_samples": 50 if attack != "none" else 0,
         "attack_covered": {"none": 0, "some": 1, "zero": 0}[attack],
         "attack_uncovered": {"none": 0, "some": 49, "zero": 50}[attack],
+        "trace_present": combo["trace"] != "none",
+        "trace_source": None if combo["trace"] == "none" else "external",
+        "trace_total": 0 if combo["trace"] == "none" else 3,
+        "trace_answered": 0 if combo["trace"] == "none" else 3,
+        "trace_cait_count": 3 if combo["trace"] == "cait" else 0,
+        "trace_cait_rate": (1.0 if combo["trace"] == "cait" else 0.0)
+                           if combo["trace"] != "none" else None,
+        "trace_orphans": 0,
+        "trace_schema_invalid": 0,
     }
     ev["_missing_evidence"] = [] if present else ["output_audit"]
     return ev

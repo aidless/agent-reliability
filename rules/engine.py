@@ -17,6 +17,28 @@ import pathlib
 RULES_PATH = pathlib.Path(__file__).resolve().parent / "joint_verdict.json"
 
 
+# 轨迹层（trace.json）是 2026-11-02 才加入的可选层。这之前落盘的 run 产物里，
+# joint_verdict.json 的 decision.evidence 是当时算出来的快照，自然没有轨迹字段。
+# 校验器会「重算 evidence 并逐字段比对」，若不做处理，历史 run 会被误判为
+# 「证据被手改」。这里把「历史快照早于轨迹层」显式建模成一个可追溯事件，
+# 而不是篡改历史产物去迁就新引擎。
+COMPAT_TRACE_FIELDS = {
+    "trace_present": False,
+    "trace_source": None,
+    "trace_total": 0,
+    "trace_answered": 0,
+    "trace_cait_count": 0,
+    "trace_cait_rate": None,
+    "trace_orphans": 0,
+    "trace_schema_invalid": 0,
+    "trace_neutral": 0,
+}
+
+COMPAT_NOTE = (
+    "historical: run 落盘时轨迹层尚未加入，缺失的 trace_* 字段按「当时没有"
+    "轨迹层」填充（读侧向后兼容），非手改产物")
+
+
 def load_rules(path: pathlib.Path | str = RULES_PATH) -> dict:
     return json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
 
@@ -52,6 +74,15 @@ def derive_evidence(run_dir: pathlib.Path, rules: dict | None = None) -> dict:
         "attack_samples": 0,
         "attack_covered": 0,
         "attack_uncovered": 0,
+        "trace_present": False,
+        "trace_source": None,
+        "trace_total": 0,
+        "trace_answered": 0,
+        "trace_cait_count": 0,
+        "trace_cait_rate": None,
+        "trace_orphans": 0,
+        "trace_schema_invalid": 0,
+        "trace_neutral": 0,
     }
     missing: list[str] = []
 
@@ -115,6 +146,27 @@ def derive_evidence(run_dir: pathlib.Path, rules: dict | None = None) -> dict:
         evidence["attack_samples"] = redteam.get("total_samples", 0)
         evidence["attack_covered"] = redteam.get("covered", 0)
         evidence["attack_uncovered"] = redteam.get("uncovered", 0)
+
+    # ---- L4（可选）：轨迹完整性 ----
+    # 答案层（audit_rate）只回答"结论对不对"；轨迹层回答"支撑结论的过程能不能被
+    # 审计"。CAIT = 答案满分但轨迹无效——答案层永远看不见这一格。
+    trace_path = run_dir / "trace.json"
+    if trace_path.exists():
+        try:
+            trace = json.loads(trace_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            trace = {}
+        evidence["trace_present"] = True
+        evidence["trace_source"] = trace.get("source")
+        evidence["trace_total"] = trace.get("trace_total", 0)
+        evidence["trace_answered"] = trace.get("trace_answered", 0)
+        evidence["trace_cait_count"] = trace.get("trace_cait_count", 0)
+        answered = evidence["trace_answered"]
+        evidence["trace_cait_rate"] = (
+            round(evidence["trace_cait_count"] / answered, 4) if answered else None)
+        evidence["trace_orphans"] = trace.get("trace_orphans", 0)
+        evidence["trace_schema_invalid"] = trace.get("trace_schema_invalid", 0)
+        evidence["trace_neutral"] = trace.get("trace_neutral", 0)
 
     # ---- 必需层 / 可选层 ----
     required = rules.get("required_layers", ["input_guard", "output_audit"])
@@ -212,8 +264,37 @@ def evaluate(rules: dict, evidence: dict) -> dict:
     }
 
 
+def _stored_evidence(run_dir: pathlib.Path) -> dict | None:
+    path = pathlib.Path(run_dir) / "joint_verdict.json"
+    if not path.exists():
+        return None
+    try:
+        stored = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    decision = stored.get("decision") if isinstance(stored, dict) else None
+    ev = decision.get("evidence") if isinstance(decision, dict) else None
+    return ev if isinstance(ev, dict) else None
+
+
 def decide(run_dir: pathlib.Path, rules_path: pathlib.Path | str = RULES_PATH) -> dict:
     """从一次 run 的产物目录直接得出联合裁决。"""
     rules = load_rules(rules_path)
     evidence = derive_evidence(pathlib.Path(run_dir), rules)
-    return evaluate(rules, evidence)
+    decision = evaluate(rules, evidence)
+
+    # 历史产物向后兼容：这个 run 落盘时轨迹层还不存在，decision.evidence 是当时的
+    # 快照、没有 trace_* 字段。校验器会重算 evidence 并逐字段比对，若不处理，历史
+    # run 会被误判为「证据被手改」。这里把「历史快照早于轨迹层」显式建模成一个
+    # 可追溯事件——只补齐缺失的轨迹字段并记录填补动作，绝不改任何原有值。
+    stored = _stored_evidence(run_dir)
+    if isinstance(stored, dict):
+        filled = {k: v for k, v in COMPAT_TRACE_FIELDS.items() if k not in stored}
+        if filled:
+            merged = dict(decision["evidence"])
+            for key in filled:
+                merged.pop(key, None)
+            merged["compat_trace_fields_added"] = sorted(filled)
+            merged["compat_note"] = COMPAT_NOTE
+            decision["evidence"] = merged
+    return decision

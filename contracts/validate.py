@@ -29,12 +29,19 @@ sys.path.insert(0, str(ROOT / "rules"))
 from jsonschema_mini import validate  # noqa: E402
 import engine  # noqa: E402
 
+# 读侧向后兼容：历史 run 落盘时轨迹层还不存在，重算会在 evidence 里补齐缺失的
+# trace_* 字段，并额外写两个标记键说明「这是历史兼容、非手改」。比对时跳过这两个
+# 标记键——否则为兼容而加的标记自己会变成新的「不一致」。
+COMPAT_MARKER_KEYS = {"compat_trace_fields_added", "compat_note"}
+
 # 文件名 -> (schema, 是否可选)
 SCHEMAS = {
     "meta.json": ("run.schema.json", False),
     "tools.json": ("tool-evidence.schema.json", False),
     "joint_verdict.json": ("joint-verdict.schema.json", False),
     "redteam.json": ("redteam.schema.json", True),
+    "trace.json": ("trace.schema.json", True),
+    "ood.json": ("ood.schema.json", True),
 }
 
 
@@ -76,7 +83,18 @@ def check_run(run_dir: pathlib.Path) -> list[str]:
                         f"(存储 {stored_decision.get(key)!r} vs 重算 {recomputed.get(key)!r})"
                     )
             if stored_decision.get("evidence") != recomputed.get("evidence"):
-                problems.append(f"{run_dir.name}/joint_verdict.json: decision.evidence 与重算结果不一致")
+                # 只把「历史兼容标记键」从比对里豁免：重算比存储多的、且不在豁免表
+                # 里的键，仍然算不一致（防止用兼容逻辑掩盖真正被删掉/改掉的字段）。
+                stored_ev = stored_decision.get("evidence") or {}
+                recomp_ev = recomputed.get("evidence") or {}
+                exempt = {k: v for k, v in recomp_ev.items()
+                          if k in COMPAT_MARKER_KEYS and k not in stored_ev}
+                trimmed_stored = {k: v for k, v in stored_ev.items() if k not in COMPAT_MARKER_KEYS}
+                trimmed_recomp = {k: v for k, v in recomp_ev.items() if k not in exempt}
+                if trimmed_stored != trimmed_recomp:
+                    problems.append(
+                        f"{run_dir.name}/joint_verdict.json: decision.evidence 与重算结果不一致 "
+                        f"(存储 {stored_decision.get('evidence')!r} vs 重算 {recomputed.get('evidence')!r})")
 
     return problems
 

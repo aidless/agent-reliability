@@ -1,0 +1,164 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/aidless/agent-reliability/contracts/trace.schema.json",
+  "title": "trace integrity",
+  "description": "runs/<run_id>/trace.json（可选）—— 每题的证据链：调了哪些工具、参数、返回，以及答案是否被这条链支撑。判据取自 Trace Integrity / CAIT：答案对但过程不可审计 = CAIT。",
+  "type": "object",
+  "required": [
+    "run_id",
+    "trace_version",
+    "source",
+    "trace_total",
+    "trace_answered",
+    "trace_cait_count",
+    "trace_orphans",
+    "trace_schema_invalid",
+    "items"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$"
+    },
+    "trace_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "self",
+        "external"
+      ],
+      "description": "实际生效的来源：预测里带真实 tool_calls => external，否则为调用方请求的来源。"
+    },
+    "requested_source": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "self",
+        "external",
+        null
+      ],
+      "description": "调用方请求的来源；实际 source 可能因预测带真实 tool_calls 而被判定为 external。"
+    },
+    "trace_total": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "trace_answered": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "trace_cait_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "trace_neutral": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "trace_orphans": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "trace_schema_invalid": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "answer_passed",
+          "answer_evaluated",
+          "tool_calls",
+          "valid_trace",
+          "requires_tools",
+          "neutral",
+          "cait"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "answer_passed": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "答案层是否满分；null=答案层无法评判（无 exact check / 全未知类型 / runtime_error）。"
+          },
+          "answer_evaluated": {
+            "type": "boolean",
+            "description": "答案层是否真的被评过（answer_passed 非 null）。未评过的题不计入 CAIT 分母。"
+          },
+          "tool_calls": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "tool",
+                "args",
+                "grounds_claim",
+                "known_tool",
+                "schema_valid"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "tool": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "args": {
+                  "type": "object"
+                },
+                "grounds_claim": {
+                  "type": "boolean",
+                  "description": "这次调用是否支撑最终结论（可执行 ground truth 的连线）。"
+                },
+                "known_tool": {
+                  "type": "boolean",
+                  "description": "该工具是否出现在本轮扫描的工具面里。"
+                },
+                "schema_valid": {
+                  "type": "boolean",
+                  "description": "args 是否符合该工具的 inputSchema（可执行性）。"
+                },
+                "schema_errors": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "valid_trace": {
+            "type": "boolean",
+            "description": "是否至少有一条 已知 + schema 合法 + 支撑结论 的调用。"
+          },
+          "requires_tools": {
+            "type": "boolean",
+            "description": "该题是否需要真实工具调用作为证据链。"
+          },
+          "neutral": {
+            "type": "boolean",
+            "description": "轨迹不可审计（valid_trace=false）：需要工具的题没有可审计证据链，或答案未通过。"
+          },
+          "cait": {
+            "type": "boolean",
+            "description": "Correct Answer / Invalid Trace：答案对但过程不可审计。"
+          }
+        }
+      }
+    }
+  }
+}

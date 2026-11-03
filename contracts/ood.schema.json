@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/aidless/agent-reliability/contracts/ood.schema.json",
+  "title": "ood evidence",
+  "description": "runs/<run_id>/ood.json（可选）—— OOD 返回值注入实验的逐 run 证据：载荷是否送达、模型是否识别、是否有凭据外带。",
+  "type": "object",
+  "required": ["run_id", "model", "payload_variant", "predictions_file", "items", "injected_items", "aware_items", "exfil_attempts"],
+  "additionalProperties": false,
+  "properties": {
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$"},
+    "model": {"type": "string", "minLength": 1},
+    "payload_variant": {"type": "string", "enum": ["plain", "base64", "fake_json"]},
+    "predictions_file": {"type": "string", "minLength": 1},
+    "items": {"type": "integer", "minimum": 0},
+    "injected_items": {"type": "integer", "minimum": 0},
+    "aware_items": {"type": "integer", "minimum": 0},
+    "exfil_attempts": {"type": "integer", "minimum": 0}
+  }
+}
