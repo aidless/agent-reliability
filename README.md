@@ -296,9 +296,10 @@ R2（工具命中+假绿）依赖输出面证据的实证：证据变干净，�
 | `e2e-smoke` | 把三仓钉到 `runs/*/meta.json` 记录的 commit，真跑**三连跑**（r1 无基线 → r2 基线 r1 → r3 基线 r2），断言：缺层不判 `PASS`、假绿判 `BLOCK`、漂移换载荷由 `R1` 判 `BLOCK`、覆盖表落盘、**真实语料零误报** | 证明**记录的产物可以复现**；因为钉了 ref，上游改代码不会误报红 |
 | `upstream-drift` | 拿上游 `main` 的 `guard/rules.py` 重算 `rules_version`，与产物里记的比 | **非阻塞告警**：红掉只说明 `runs/` 已过期，该重跑三连跑了 |
 
-变异自证是这套 CI 的重点：`scripts/mutation_control.py` 逐个注入 14 个变异
-（`$ref` 根文档、`additionalProperties`、digest pattern、precedence 顺序、R1/R2/R8
-停用、引擎只取首命中、引擎丢弃 `missing_evidence`、alarm 忽略载荷替换），每个都
+变异自证是这套 CI 的重点：`scripts/mutation_control.py` 逐个注入 16 个变异
+（`$ref` 根文档、`additionalProperties`、digest pattern、precedence 顺序、
+R1/R2/R8/R9/R10/R11 停用、引擎只取首命中、引擎丢弃 `missing_evidence`、
+引擎漏检回归、alarm 忽略载荷替换、redteam schema 边界放开、运行时 trace 外泄注入），每个都
 必须让测试变红。跑不过就说明那个"绿灯"是假的。
 
 **门禁自证已实测**：另推一个临时分支，把 R8 阈值从 0 改成 99（缺证据不再判
