@@ -51,7 +51,7 @@ CI 有两个 job：`gates`（双 Python 腿，不依赖上游）与 `e2e-smoke`�
     ├── rules/                  # M2 联合裁决层：规则是数据，引擎只求值
     │   ├── joint_verdict.json         # R1–R11 规则 + verdict_precedence
     │   └── engine.py                  # derive_evidence / evaluate / decide
-    ├── tests/test_joint_verdict.py     # 57 个测试（契约 + 裁决 + 真实产物 + M4 + 真实语料 + 轨迹）
+    ├── tests/test_joint_verdict.py     # 58 个测试（契约 + 裁决 + 真实产物 + M4 + 真实语料 + 轨迹）
     ├── tests/test_real_model_runner.py  # 2 个测试（真实模型 runner 的离线参数/路径）
     ├── runs/                        # 每次运行的完整产物
     │   ├── 20261028-r1-baseline/    #   缺输出层 → INCOMPLETE（缺证据 ≠ 通过）
