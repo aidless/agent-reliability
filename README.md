@@ -2,6 +2,8 @@
 
 [![ci](https://github.com/aidless/agent-reliability/actions/workflows/ci.yml/badge.svg)](https://github.com/aidless/agent-reliability/actions/workflows/ci.yml)
 
+> **English TL;DR**: An offline joint-verdict harness that chains two evaluation repos — mcp-guard (tool-definition poisoning) and auditable-llm-eval (output false-greens) — into one reproducible decision pipeline with zero model calls and no API key. Run the full chain via `python3 run.py`, validate artifacts with `contracts/validate.py`, and prove the gates with `scripts/mutation_control.py` (16/16 mutations caught). Verdict rules are data (R1–R11), missing evidence never counts as pass, and every number is recomputable while remaining a small-sample demonstration, not a capability claim.
+
 **把两个评测仓接成一条可复算的联合裁决链路。** 全离线、零模型调用、零 API key、
 零第三方运行时依赖。
 
