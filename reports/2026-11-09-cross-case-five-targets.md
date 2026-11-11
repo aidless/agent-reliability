@@ -10,7 +10,7 @@
 | WorkBuddy | `work/electron/WorkBuddy.evidence.json`（484,359,447 B） | 3 条 integrity contradictions（node-pty/better-sqlite3，untrusted） | 源码抽取 14 文件 + 语义复扫 + 隔离探针 53/53 |
 | Qoder | `work/electron/Qoder.evidence.json`（ev_5d88d290c744…） | 干净 | 全量 trace 补跑 5 种子 |
 | Qoder-CN | `work/electron/QoderCN.evidence.json` | 干净 | 全量 trace 补跑 5 种子 |
-| BaiduNetdisk | `work/electron/BaiduNetdisk.partial.evidence.json`（ev_7a5ff1dbb78b…，682,470,796 B cancelled 包裹） | partial（分析中断） | 流式结构还原（本报告 §4） |
+| BaiduNetdisk | **`work/electron/BaiduNetdisk.evidence.json`（ev_4b2124d5681b…，1,115,993,105 B，rc=0 全量）**；旧 `BaiduNetdisk.partial.evidence.json`（ev_7a5ff1dbb78b…，682,470,796 B cancelled）保留作对照 | **干净（全量完成，2026-11-10）** | 全量 JS 分析 + 17 个原生 ELF 反编译（`reports/2026-11-11-baidunetdisk-native-modules.md`） |
 
 ## 2. 五案例种子命中对照（trace-application-feature，direction=both）
 
@@ -20,11 +20,11 @@
 |---|---|---|---|---|---|---|---|
 | Freebuff | 1,388 | 32 | 27 | 10 | 14 | 0 | partial ×4 / no-match |
 | GrokBot | 3,341 | 14 | 0 | 0 | 6 | 0 | partial ×2 / no-match ×3 |
-| OpenCode | 24,439 | 41 | 1 | 0 | 未跑 | 未跑 | partial ×2 |
+| OpenCode | 24,439 | 41 | 1 | 0 | 2 | 0 | partial ×3 / no-match ×2 |
 | Qoder | 16,945 | 80 | 1 | 0 | 38 | 0 | partial ×3 / no-match ×2 |
 | Qoder-CN | 16,944 | 80 | 1 | 0 | 38 | 0 | partial ×3 / no-match ×2 |
 
-（GrokBot/OpenCode 数字为 TRACE_INDEX.md 原有行，未改动；Qoder 系为本轮新跑，`work/electron/qoder_trace_stats.json` 汇总。）
+（GrokBot 数字为 TRACE_INDEX.md 原有行；Qoder 系与 OpenCode compact/approve 为本研究线新跑，`work/electron/{qoder,opencode}_trace_runlog.json` 汇总。）
 
 ### 横向读数（全部可从上表复算）
 
@@ -52,6 +52,8 @@ WorkBuddy 本轮未跑 trace（其 evidence 的 semantic 图为 23,171 节点，
 - 两个案例都验证了「源码级结论可被隔离运行时探针复验」这一方法学闭环（55/55 + 53/53，failed=[]）。
 
 ## 4. BaiduNetdisk partial：中断边界还原（流式，682,470,796 B）
+
+> **2026-11-10 状态更新**：本节记录的是**旧 partial 包裹**的中断边界，作为「进程级失败边界」的历史证据保留。同一 artifact（app.asar SHA256 `87a6e39f…`）已于 2026-11-10 全量重跑成功——`work/electron/batch_baidu.sh 7200 1800000 4096` → **rc=0，48 分 12 秒，`work/electron/BaiduNetdisk.evidence.json` 1,115,993,105 B，evidence_id `ev_4b2124d5681bc5ddc457b42987c046fad805395a11b7f39c1a9e63a6414f0008`**。逐项对照：JS 文件 2,624→**29,886**、AST 节点 389,723→**23,623,733**、findings 3,836→**111,895**、modules 0→**265**、`ipc.operations` 0→**66**、`sender_validation_observations` 0→**352**；但 `graph.coverage=partial` 且 `semantic_graph.coverage.truncated=true`——**全量 ≠ 完整**。原生面见 `reports/2026-11-11-baidunetdisk-native-modules.md`。
 
 父证据：`ev_7a5ff1dbb78b97e3d59fd8b9ea95daf17f0d97c3cd9e8f0ad11ea5e6f0e02e79`，
 subject `app.asar` SHA256 `87a6e39fb1082e458cd183cbee7ed9527bfc4a13edee2f51b7bded54df91330e`
@@ -83,8 +85,10 @@ IPC 与模块归组阶段未开始（全 0 行）。与 trace 层五案例互补
 - **binwalk 3.1.0**（`work/engines/binwalk/binwalk`）：对 21,374,479 B ASAR 签名扫描 11 hits
   （copyright 8 / elf 2 / svg 1）→ `work/firmware/freebuff_asar_binwalk_report.json`（4,299 B，
   list[{"Analysis":{file_path,file_map}}] 格式）。ELF 命中提示 ASAR 内嵌 ripgrep 类二进制。
-  **契约落差**：REA `FirmwareReports.js` 期望 `--report` 参数；binwalk 3.1.0 实际只有 `-l/--log`。
-  若走 REA 固件路径需 shim 翻译参数（未实施，只记录）。
+  **2026-11-10 更正**：原写「REA 期望 `--report`，binwalk 只有 `-l/--log`，契约落差需 shim」——**该说法有误**。
+  实读 REA 6.4.0 `dist/firmware/FirmwareProvider.js`：`--report` 只属 **unblob** 路径（:233）；
+  **binwalk 路径（:193-201）实参 `--quiet --search-all --threads 1 --log <reportPath>`**，与 binwalk 3.1.0 完全对齐，
+  **无契约落差、不需 shim**。错误根因：混用两引擎实参列表（STEP4_TOOLCHAIN.md 同源错误，已更正）。
 - **jadx-headless-mcp 0.7.1**（`dist/android/jadx-headless-mcp-0.7.1-all.jar`，SHA256
   `6e5eacf500b64292bfb73c49797c1958f6ee44646e43e868039ae7feb573ff75`）：对
   `/home/liuzewen/Downloads/rustdesk-1.5.0/rustdesk-1.5.0-universal-signed.apk` 走真实 MCP stdio
@@ -120,6 +124,6 @@ python3 -c "import json;d=json.load(open('work/firmware/freebuff_asar_binwalk_re
 
 - 不把 `matched_seeds=0` 写成"功能不存在"——那是字符串级追踪的有效负结果，语义存在性归探针层。
 - 不把 Qoder/Qoder-CN 命中分布逐位相同写成"代码相同"——支持的是同源假设，需 diff 证实（未做）。
-- BaiduNetdisk partial 的全零行是"阶段未达"，写成"无 IPC"就是编造。
+- BaiduNetdisk **partial** 的全零行是"阶段未达"，写成"无 IPC"就是编造；**全量**的 `ipc.paired_renderer_transmissions=0` 也不是"无 IPC"，而是 66 条里 62 条用动态通道表达式、静态不可配对（`limitations` 原话）。
 - WorkBuddy 3 条 integrity contradictions 文件（node-pty/better-sqlite3）引用必须带 untrusted 标记。
-- OpenCode compact/approve 仍未跑——本报告所有"五案例"结论都不含 OpenCode 这两格。
+- OpenCode compact/approve **已补跑**（compact 命中 2 / 109,851,405 B / partial；approve 命中 0 / 2,124 B / no-match）。旧 684 B 是 ENOENT 错误 stub，不是有效负结果。

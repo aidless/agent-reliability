@@ -95,6 +95,8 @@ npx -y rea-agents@6.4.0 doctor --client codex --json | python3 -c "import json,s
 - Qoder 与 Qoder-CN 命中分布逐位相同 + 图规模差 1 节点 → 支持「CN 版同源重建」假设（未 diff 证实，不下"代码相同"结论）。
 - BaiduNetdisk partial（682,470,796 B cancelled 包裹）流式还原中断边界：JS 解析完成（2,624 文件/0 失败/3,836 findings）、主图 86,122 节点/94,432 边部分建成、IPC 阶段全零行=未开始。
 
-**工具链实战**：binwalk 3.1.0 对 Freebuff ASAR 签名扫描 11 hits（elf 2 → 内嵌 ripgrep 类二进制）；发现 binwalk 3.1.0 无 `--report`（REA FirmwareReports.js 期望），实际为 `-l/--log`——契约落差已记录。jadx-headless-mcp 0.7.1 对 rustdesk-1.5.0 APK 真实 MCP 会话 initialize→tools/list→load_apk→get_android_manifest 全通。
+**工具链实战**：binwalk 3.1.0 对 Freebuff ASAR 签名扫描 11 hits（elf 2 → 内嵌 ripgrep 类二进制）；jadx-headless-mcp 0.7.1 对 rustdesk-1.5.0 APK 真实 MCP 会话 initialize→tools/list→load_apk→get_android_manifest 全通。
+
+**2026-11-10 更正（重要）**：上文原写「binwalk 3.1.0 无 `--report`、与 REA 契约有落差需 shim」——**该说法错误**。实读 REA 6.4.0 源码：`--report` 只属 unblob 路径（`FirmwareProvider.js:233`），binwalk 路径（`:193-201`）实参为 `--quiet --search-all --threads 1 --log <reportPath>`，与 binwalk 3.1.0 对齐。更正后实测：三条 REA 正式路径全部跑通——`inspect-firmware-regions`（binwalk 3.1.0）→ 29 regions；`extract-firmware`（unblob 26.6.4）→ 5 files、published_bytes 21,374,479、两个 carved.elf 与 ASAR 内嵌 ripgrep 逐字节哈希一致；`inspect-android-package`（jadx 0.7.1）→ 24,125 B evidence。
 
 详细数字与复算命令：`~/rea-work-20261108/reports/2026-11-09-cross-case-comparison.md`、`reports/2026-11-09-workbuddy-evidence-card.md`、`reports/TRACE_INDEX.md`（已回填 Qoder 两行 ×5 种子）。
