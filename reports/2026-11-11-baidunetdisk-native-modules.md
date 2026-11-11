@@ -60,11 +60,30 @@ napi_call_threadsafe_function(lVar5, __ptr, 0);
 
 `XOpenDisplay` → `XSetInputFocus(..., RevertToParent=1, CurrentTime)` → `XInternAtom("_NET_ACTIVE_WINDOW")` → `XSendEvent(root, ..., 0x180000, &msg)`（format=32、source indication=**1**=应用发起）→ `XFlush`/`XCloseDisplay`。即绕过窗口管理器焦点策略把自身提到前台。同模块的 `MakePanel` / `MakeWindow` 无此行为。
 
+## 动态补测（2026-11-10 追加，含一次结论更正）
+
+静态层的三处天花板在动态层补上了。完整证据卡在 `~/rea-work-20261108/reports/2026-11-11-uiohook-dynamic-observation.md`（265 行 / SHA-256 `3895c948281f641e92b0bfd84e48fc10f2426c5494541b937191ed7459003b14`）。
+
+**① 可加载性**：该 `.node` 是 N-API 模块（有 `napi_register_module_v1`），ABI 跨 Node 大版本稳定 → 系统 node 24.20.0 直接 `require()` 成功（`exports = ["start","stop","keyTap"]`），不必借 Electron 运行时。（顺带记：`ELECTRON_RUN_AS_NODE=1 /opt/baidunetdisk/baidunetdisk` 走不通——SUID sandbox FATAL / `GPU process isn't usable. Goodbye.`。）
+
+**② 钩子收事件 + 「10→9」运行时成立**：XTEST 注入序列（`a` / Shift+`a` / motion / 按下→两段拖动→抬起）与捕获**逐条 1:1 对应共 11 条**；事件类型 `10` 计数 **0**，按下与抬起之间的两段拖动都报 **`9`**。这正面证实了 `dispatch_proc` 的 `if (iVar6 == 10) *(undefined4 *)__ptr = 9;`——**拖动被并入移动，JS 侧拿不到 type 10**。同时量到 X keycode → uiohook keycode 是**减 8**（38→30、50→42），修饰位 `shiftKey` 正确置位。
+
+**③ keyTap 真的会投递——此前结论要撤回**：早先用 uiohook 自身的钩子（XRecord 后端）观察 `keyTap`，跨三次独立实验都是 0 事件，据此写了「keyTap 是 no-op」。**错在仪器**：`keyTap` 走 `XSendEvent`，而 XRecord 不记录合成事件。换成独立 X11 焦点接收端后，`keyTap(48,0)` 到手 `{type:2/3, send_event:1, keycode:56}`；复刻 `simulateCopy()` 的 Ctrl+C（`Ctrl=0x1d` Down → `C=0x2e` Tap → `Ctrl` Up）到手 4 条 `keycode 37/54/54/37`，第 2 条起 `state=4`（ControlMask）。
+对照实验同 display 同时刻：钩子只 2 条（XTEST 的 `k=30`），焦点窗口 4 条（keyTap 的 `keycode=56 send_event=1` ×2 + XTEST 的 `keycode=38 send_event=0` ×2）。差别就在 `send_event`。
+连带撤回一条反编译推断：「`helper_disp` 恒为 0 ⇒ `hook_post_event` 一进门就 return」——运行时非空（赋值在未反编译的函数里）。
+
+**④ 谁在调它（`core.asar`，此前只扫了 `app.asar`）**：`require("uiohook-napi")`（off 78833954）、长按监听类（79312497）、`simulateCopy()` = 非 darwin 的 `keyTap(C,[Ctrl])`（79314940）、消费方 `.on("longPress")`（79741794）、`He()` = `clipboard.clear() → simulateCopy() → 500 ms 后读剪贴板`（79743310）、启停闸 `ipcMain.on(OPEN_DESKTOP_UPLOAD) → Se.start()`（79745740）。
+可得行为链：右键长按 ≥250 ms（或 Ctrl+1，`keycode 2` 在码表里是数字键 `1`）→ 钩子投递 → `emit("longPress")` → 清空剪贴板 → 合成 Ctrl+C → 500 ms 后 `readFiles()` 读回选中内容 → 面板显示/上传。
+
+**⑤ 端到端否定结果**：起动真实客户端两批（120 s / 75 s，Xvfb `:99`，隔离 HOME/XDG），7–8 个进程里 `main.js` 从 `core.asar` 加载成功、`registerShortcut: true`，但 **`/proc/<pid>/maps` 里 `uiohook` 与任何 `.node` 都是 0 行**，`app.log` 里 `uiohook` 命中 0/56 行。原因即 ④ 的启停闸：钩子按需启动，不是启动即加载。
+
+**方法论教训（可迁移）**：**「没有观测到」必须先证仪器对靶**。误判的代价是把「注入能力已实测」写成「无能力」，根因是观测通道（XRecord）与被观测机制（`XSendEvent`）不同源。正确判据是「同一时刻两个观测者看到什么差异」（`send_event=0` vs `=1`），不是「我的仪器收到几条」。
+
 ## 边界（不得越过）
 
 1. **反编译 ≠ 源码**。pseudocode 是 Ghidra 12.1.3 表示；结论只到「调了哪些 X11 / N-API 函数」，不到意图层。
 2. **只在 X11 分支成立**。Windows 走 `SET_WINDOWS_HOOK_EX`、macOS 走 AXAPI，本次未分析对应二进制。
-3. **没有动态观测**。没启动过客户端，没观测真实事件流。要说「实测到键盘事件外泄」还差一次 ptrace/strace 级观测；当前能写的是「依赖声明 + 导出符号 + `AddonStart` 存在」。
+3. ~~**没有动态观测**~~ **2026-11-10 已补，见上节「动态补测」**：钩子确实收本地输入（XTEST 1:1）、`keyTap` 确实向焦点窗口投递合成事件（`send_event=1`）、真实客户端冷启动期间不加载该 `.node`。仍不能写「实测到键盘事件外泄」——需网络层关联证明事件被发往远端，本卡与动态卡都没做。
 4. **`SortByKey` 已注册未导出**（`pc-electron-native-util/index.js` 只导 `BetterCompare`），`MakeAlwaysOnTop` 有符号无 JS 导出——「编译进去」不等于「运行时调用」。
 5. REA 的 JavaScript application graph 把 uiohook 记成 `native-addon` 节点（`native_addon_bindings: 1`），但**不展开符号级调用图**；本卡结论全部来自 `analyze` / `function` 两条独立路径。
 
