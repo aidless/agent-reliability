@@ -62,7 +62,7 @@ napi_call_threadsafe_function(lVar5, __ptr, 0);
 
 ## 动态补测（2026-11-10 追加，含一次结论更正）
 
-静态层的三处天花板在动态层补上了。完整证据卡在 `~/rea-work-20261108/reports/2026-11-11-uiohook-dynamic-observation.md`（265 行 / SHA-256 `3895c948281f641e92b0bfd84e48fc10f2426c5494541b937191ed7459003b14`）。
+静态层的三处天花板在动态层补上了。完整证据卡在 `~/rea-work-20261108/reports/2026-11-11-uiohook-dynamic-observation.md`（288 行 / SHA-256 `d71ff76168edf2ce72cf87eed41dc81aa78808d59f26c8a507a95c0df4c809d1`，2026-11-12 有增补）。
 
 **① 可加载性**：该 `.node` 是 N-API 模块（有 `napi_register_module_v1`），ABI 跨 Node 大版本稳定 → 系统 node 24.20.0 直接 `require()` 成功（`exports = ["start","stop","keyTap"]`），不必借 Electron 运行时。（顺带记：`ELECTRON_RUN_AS_NODE=1 /opt/baidunetdisk/baidunetdisk` 走不通——SUID sandbox FATAL / `GPU process isn't usable. Goodbye.`。）
 
@@ -91,18 +91,40 @@ IPC 频道字符串同时闭合：`OPEN_DESKTOP_UPLOAD` = **`"openDesktop"`**（
 
 **⑥ 网络面（同轮补测）**：`tcpdump` 与 `strace -p` 在本机均被权限拒绝（缺 CAP_NET_RAW / ptrace_scope），改走 `ss -tnp` A/B 差分 —— trigger 组 30 s 内新增 6 个远端端点，control 组新增 3 个且**全部包含在 trigger 组集合内** ⇒ 属周期性心跳/埋点，非钩子引起。**只能写「未观测到外传」，不能写「无外传」**（TLS 不可解析、无 payload 关联）。
 
-**方法论教训（可迁移，本卡踩了两次同一类错）**：
+**⑦ 长按链闭环与网络面升档（2026-11-12 追加）**
+
+**闸门是源码级可证的**：`Se.on("longPress",(e,n,t)=>{Ie.hide();const i=P.app.mainBrowserwindow;i&&i.isFocused()||(…He(),…)})`（`core.asar` off `79741792`，闸门 `i&&i.isFocused()||` 在 `79741862`）——**主窗口持焦点时整条链被静默跳过**。判据换成用户可见的面板文案（`t._v("剪贴板中的"+…+"个文件")`，off `6483241`）后，三条件 A/B：
+
+| 条件 | 焦点持有者 | 剪贴板 | 面板 |
+|---|---|---|---|
+| A | app 主窗口 | 标记文本 | **不含**「剪贴板中的」（3/3，标记原样不动） |
+| B | 自建 override-redirect 窗口 | 标记文本 | `He()` 第一步 `clipboard.clear()` 生效（标记 → 空） |
+| C | 协作式第三方窗口（持焦点且持剪贴板） | `/tmp/probe_dtu/a.txt\r\n/tmp/probe_dtu/b.txt` | **5/5 命中**「剪贴板中的2个文件 / a.txt 等2个文件」 |
+
+运行时指纹（`app8.log` 144 行，同一栈 6 次）：`longPressCallback (main.js:1:993049)` → `emit (1:648767)` → `Timeout._onTimeout (1:649461)` → `He (1:994303)` → `We (1:990784)` → `readFiles (1:650642)`。`hook_thread_proc` 只 1 条 ⇒ 钩子首轮按需启动后持续在跑。
+
+两处 X11 结构事实（引用时常被写错）：**鼠标按钮重映射** `XTEST 1→button 1`、`XTEST 2→button 3`、`XTEST 3→button 2`（所以 `onMouseDown` 判 `3===e.button` 命中的是 X 中键）；**键盘** `XTEST(38)→uiohook 30`、`XTEST(50)→42`（减 8）。长按判定还可用 LF 坏载荷当廉价探针：`readFiles` 在 `JSON.parse` 抛 `Bad control character …`，栈里出现 `longPressCallback` 即为执行命中。
+
+网络面从端点集合升到明文载荷（三档）：`ss -tnp`（IP）→ CONNECT 隧道代理（**明文 Host**，20 s 39 条 CONNECT / 12 端点，**全部百度自有域名，无第三方**）→ 现场签发叶证书的 MITM（**请求行 + 头 + POST body**，11 条解密，`POST /api/log/report/contentFe` 三条 `cl=bodyn=949/1065/978` + `POST /cap/log` 1381）。这批登录取证的 body 是 web-vitals 性能遥测（`PERFORMANCE: LCP` / `FPS_JANK_PAGE_VIEW` / `FPS: 48, Jank Rate: 0.021`）+ 本机环境指纹（UA / `cuid` / `tid` / `networkType`），**未见剪贴板内容或文件路径**。MITM 只解密 3 个 host —— CA 未被 app 信任（`app4.log` 21 次 `CertVerifyProcBuiltin … No matching issuer found`，覆盖 12 个 host），`--ignore-certificate-errors` 对 Electron `net::` 栈无效。
+
+完整证据卡：`~/rea-work-20261108/reports/2026-11-12-longpress-clipboard-loop.md`（225 行，SHA-256 `29a3575534c5eca59d09693022aab5b2d57b200ef368111e547230cf3d197a2a`），原始读数 `~/rea-work-20261108/work/net-probe/longpress_loop_evidence/`（26 文件，`result.jsonl` 5/5）。
+
+**方法论教训（可迁移，本卡踩了四次同一类错——把「我的仪器看不见」当成「不存在」）**：
 
 - **第 1 次（`keyTap`）**：「没有观测到」必须先证仪器对靶。误判代价是把「注入能力已实测」写成「无能力」，根因是观测通道（XRecord）与被观测机制（`XSendEvent`）不同源。正确判据是「同一时刻两个观测者看到什么差异」（`send_event=0` vs `=1`），不是「我的仪器收到几条」。
 - **第 2 次（maps 判据）**：阳性对照只证明了「按**路径名**能看见」，没证明「这条尺子对 Electron 的**随机名解包**也有效」。真正对靶的判据必须建立在**不随载体改名而变的身份**——这里是内容 SHA-256，读 `/proc/<pid>/map_files/<addr>` 而不是 `/proc/<pid>/maps` 的路径字符串。
-- 两次的共同点：**把「看不见」当成「不存在」**。判据自检的正确形式是「注入一个已知存在的东西，看它能否被看见」，而不是「拿它的某个特征去搜」。
+- **第 3 次（CDP target）**：同一 URL `index.html#/login` 在 `/json` 里有 **2 个 page target**，只有 `hasFocus=true` 的那个活。按第一个 target 挂监听读到 0 条，责任在**看错对象**，不在机制。判据修法：遍历所有 target 逐个 arm/read，把 `hasFocus` 与 `vis`（`visible`/`hidden`）一起打出来。
+- **第 4 次（第三方剪贴板应答）**：自造第三方窗口声明 CLIPBOARD 后 Electron 侧读到空串，第一反应是「掩码/加密」。真相是**协议应答不全**——Chromium 先要 `TARGETS`（须回 **32-bit atom 列表** `UTF8/STRING/TEXT`），且具体 target 的 property type 必须是**被请求的 atom 本身**。补齐后 `readText()`/`read('text/plain')` 同值、`availableFormats()=["text/plain"]`。这一类的特征是**前置条件没造对**，而失败现象长得像「目标拒绝」。
+- **四次归因谱（值得当检查表用）**：「没有观测到」有四种病因——(a) 机制真的不存在；(b) 机制在、**仪器看不见**（XRecord 见不到 `XSendEvent`）；(c) 机制在、仪器对、**看错对象**（同 URL 两个 target）；(d) 机制在、仪器对、对象对、**我造的前置条件不成立**（`TARGETS` 没回、焦点被面板夺走）。每次的正解都是把判据换成「**另一条独立通道能否看到同一件事**」。
+- 判据自检的正确形式是「注入一个已知存在的东西，看它能否被看见」，而不是「拿它的某个特征去搜」。
 
 ## 边界（不得越过）
 
 1. **反编译 ≠ 源码**。pseudocode 是 Ghidra 12.1.3 表示；结论只到「调了哪些 X11 / N-API 函数」，不到意图层。
 2. **只在 X11 分支成立**。Windows 走 `SET_WINDOWS_HOOK_EX`、macOS 走 AXAPI，本次未分析对应二进制。
-3. ~~**没有动态观测**~~ **2026-11-10 已补，2026-11-11 更正第三点，见上节「动态补测」**：钩子确实收本地输入（XTEST 1:1）；`keyTap` 确实向焦点窗口投递合成事件（`send_event=1`）；模块**冷启动即加载**、钩子线程**按需启动**（不是「不加载」）。仍不能写「实测到键盘事件外泄」——网络 A/B 只到端点集合层，**未观测到**外传但未证否。⚠️ 不可再引用「冷启动期间不加载该 `.node`」，该结论建立在按路径名搜 `uiohook` 的错误判据上，已撤回。
-3b. **网络面的表达上限**：`tcpdump`（缺 CAP_NET_RAW）与 `strace -p`（ptrace_scope）均不可用，只能做 `ss -tnp` 端点集合差分。「control 端点集合 ⊆ trigger 端点集合」只否证「钩子引起新增端点」，不否证「已有的心跳连接承载了事件内容」。
+3. ~~**没有动态观测**~~ **2026-11-10 已补，2026-11-11 更正第三点，见上节「动态补测」**：钩子确实收本地输入（XTEST 1:1）；`keyTap` 确实向焦点窗口投递合成事件（`send_event=1`）；模块**冷启动即加载**、钩子线程**按需启动**（不是「不加载」）。仍不能写「实测到键盘事件外泄」——网络面已升到明文载荷（见 3b），**未观测到**外传但未证否。⚠️ 不可再引用「冷启动期间不加载该 `.node`」，该结论建立在按路径名搜 `uiohook` 的错误判据上，已撤回。
+3b. **网络面的表达上限（2026-11-12 更新）**：`tcpdump`（缺 CAP_NET_RAW）与 `strace -p`（ptrace_scope）均不可用，但可改用**代理**取明文——CONNECT 隧道代理（只解 Host）与现场签发叶证书的 MITM（能看请求行 + 头 + POST body）。即便如此：MITM 只解密了 3 个 host（CA 未被 app 信任，`--ignore-certificate-errors` 对 Electron `net::` 栈无效），且「control 端点集合 ⊆ trigger 端点集合」只否证「钩子引起新增端点」，不否证「已有的心跳连接承载了事件内容」。**在读到的这批登录取证载荷里未见剪贴板内容或文件路径，这只支持「未观测到」，不支持「无外传」。**
+3c. **剪贴板闭环的第三方窗口是我们自己写的**。它证明「应用会向**当前焦点窗口**发合成 `Ctrl+C` 并把剪贴板内容读回来」，**不证明**对任意真实应用都能取到（真实应用未必按协议应答：实测 `xedit` 在 `:99` 上根本不绑 `Ctrl+C`，用它会得到假阴性）。另外 `:99` **无窗口管理器**，焦点行为与真实桌面不同；`isFocused()` 闸门本身是源码级可证的（off `79741862`），不依赖本环境。
 4. **`SortByKey` 已注册未导出**（`pc-electron-native-util/index.js` 只导 `BetterCompare`），`MakeAlwaysOnTop` 有符号无 JS 导出——「编译进去」不等于「运行时调用」。
 5. REA 的 JavaScript application graph 把 uiohook 记成 `native-addon` 节点（`native_addon_bindings: 1`），但**不展开符号级调用图**；本卡结论全部来自 `analyze` / `function` 两条独立路径。
 
