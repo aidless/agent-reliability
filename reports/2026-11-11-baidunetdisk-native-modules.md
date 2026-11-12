@@ -107,15 +107,26 @@ IPC 频道字符串同时闭合：`OPEN_DESKTOP_UPLOAD` = **`"openDesktop"`**（
 
 网络面从端点集合升到明文载荷（三档）：`ss -tnp`（IP）→ CONNECT 隧道代理（**明文 Host**，20 s 39 条 CONNECT / 12 端点，**全部百度自有域名，无第三方**）→ 现场签发叶证书的 MITM（**请求行 + 头 + POST body**，11 条解密，`POST /api/log/report/contentFe` 三条 `cl=bodyn=949/1065/978` + `POST /cap/log` 1381）。这批登录取证的 body 是 web-vitals 性能遥测（`PERFORMANCE: LCP` / `FPS_JANK_PAGE_VIEW` / `FPS: 48, Jank Rate: 0.021`）+ 本机环境指纹（UA / `cuid` / `tid` / `networkType`），**未见剪贴板内容或文件路径**。MITM 只解密 3 个 host —— CA 未被 app 信任（`app4.log` 21 次 `CertVerifyProcBuiltin … No matching issuer found`，覆盖 12 个 host），`--ignore-certificate-errors` 对 Electron `net::` 栈无效。
 
-完整证据卡：`~/rea-work-20261108/reports/2026-11-12-longpress-clipboard-loop.md`（225 行，SHA-256 `29a3575534c5eca59d09693022aab5b2d57b200ef368111e547230cf3d197a2a`），原始读数 `~/rea-work-20261108/work/net-probe/longpress_loop_evidence/`（26 文件，`result.jsonl` 5/5）。
+完整证据卡：`~/rea-work-20261108/reports/2026-11-12-longpress-clipboard-loop.md`（271 行，SHA-256 `767292bbbb89826e2b9aefaf07dedcf91fa93b8c9e5eabd58e01688c8e9baeb7`；含 §7b SPKI pin 与 §7c 外传 A/B），原始读数 `~/rea-work-20261108/work/net-probe/longpress_loop_evidence/`（26 文件，`result.jsonl` 5/5）。
 
-**方法论教训（可迁移，本卡踩了四次同一类错——把「我的仪器看不见」当成「不存在」）**：
+**⑧ MITM 上限解除 + 剪贴板内容外传的干净 A/B（2026-11-12 追加）**
+
+**上限解除靠 SPKI pin，不靠装 CA**：把「所有叶证书共用一把固定密钥」（`openssl genrsa -out /tmp/mitm/leaf.key 2048`，叶证书统一由该密钥签）这步做了之后，才能算出**单一**的叶 SPKI `1rNIPyjFPElQ5iPJJoNErD//XCTK/ZWyM04hRlaRfuI=`；原版 `mitm2.py` 每 host 现签一把新密钥，SPKI 每 host 不同，无从 pin。app 加 `--ignore-certificate-errors-spki-list=…` 后 `CertVerifyProcBuiltin` **0 次**（旧路线 21 次）、**13 个 host 全解密**。
+
+**SPKI 的语义边界（这句必须带）**：`curl --pinnedpubkey` 不带 `-k` 仍 rc=60 ⇒ **pin 只管公钥匹配，不替代信任链**；Chromium 能放行是因为它**同时跳过链校验**——这比「装 CA」更粗暴。
+
+**外传问题的干净 A/B**：剪贴板放两个已知路径，先在渲染层经 CDP 发一次 `openDesktop`（**否则 `je()` 未执行、`Se.on("longPress")` 没注册，注入 `Ctrl+1` 得 `SUMMARY copied=False served=1`**——这是本轮踩到的第五个前置条件），再各 30 s 对比：control **新增 REQ = 0**；trigger 面板确认命中「剪贴板中的2个文件」而 **新增 REQ 也是 0**；needle 全文扫描（raw/urlquote/quote_plus 三形态，扫描器先用 curl 自检过靶）累计命中仍 3（全部 curl 自检）。
+
+**剩余风险写明**：`POST /jnmq`（`xlab.baidu.com`）的 `p=`/`q=` 是 URL 编码 base64，解出 1,419 B 二进制（可打印比例 0.373），**字符串匹配对它无效**；且它是**周期节律**（60 s 内 5 次，`cl=660/14870/14894/678/918`），触发时刻只撞上一次，**不能当因果证据**。所以结论只能是「未观测到外传」，理由从「覆盖率不够」升级为「结构不可穿透」。
+
+**方法论教训（可迁移，本卡踩了五次同一类错——把「我的仪器看不见」当成「不存在」）**：
 
 - **第 1 次（`keyTap`）**：「没有观测到」必须先证仪器对靶。误判代价是把「注入能力已实测」写成「无能力」，根因是观测通道（XRecord）与被观测机制（`XSendEvent`）不同源。正确判据是「同一时刻两个观测者看到什么差异」（`send_event=0` vs `=1`），不是「我的仪器收到几条」。
 - **第 2 次（maps 判据）**：阳性对照只证明了「按**路径名**能看见」，没证明「这条尺子对 Electron 的**随机名解包**也有效」。真正对靶的判据必须建立在**不随载体改名而变的身份**——这里是内容 SHA-256，读 `/proc/<pid>/map_files/<addr>` 而不是 `/proc/<pid>/maps` 的路径字符串。
 - **第 3 次（CDP target）**：同一 URL `index.html#/login` 在 `/json` 里有 **2 个 page target**，只有 `hasFocus=true` 的那个活。按第一个 target 挂监听读到 0 条，责任在**看错对象**，不在机制。判据修法：遍历所有 target 逐个 arm/read，把 `hasFocus` 与 `vis`（`visible`/`hidden`）一起打出来。
 - **第 4 次（第三方剪贴板应答）**：自造第三方窗口声明 CLIPBOARD 后 Electron 侧读到空串，第一反应是「掩码/加密」。真相是**协议应答不全**——Chromium 先要 `TARGETS`（须回 **32-bit atom 列表** `UTF8/STRING/TEXT`），且具体 target 的 property type 必须是**被请求的 atom 本身**。补齐后 `readText()`/`read('text/plain')` 同值、`availableFormats()=["text/plain"]`。这一类的特征是**前置条件没造对**，而失败现象长得像「目标拒绝」。
-- **四次归因谱（值得当检查表用）**：「没有观测到」有四种病因——(a) 机制真的不存在；(b) 机制在、**仪器看不见**（XRecord 见不到 `XSendEvent`）；(c) 机制在、仪器对、**看错对象**（同 URL 两个 target）；(d) 机制在、仪器对、对象对、**我造的前置条件不成立**（`TARGETS` 没回、焦点被面板夺走）。每次的正解都是把判据换成「**另一条独立通道能否看到同一件事**」。
+- **四次归因谱（值得当检查表用；第 5 次属于同一谱里的 (b)「仪器看不见」）**：「没有观测到」有四种病因——(a) 机制真的不存在；(b) 机制在、**仪器看不见**（XRecord 见不到 `XSendEvent`）；(c) 机制在、仪器对、**看错对象**（同 URL 两个 target）；(d) 机制在、仪器对、对象对、**我造的前置条件不成立**（`TARGETS` 没回、焦点被面板夺走）。每次的正解都是把判据换成「**另一条独立通道能否看到同一件事**」。
+- **第 5 次（MITM 日志静默截断）**：`BODY[:2000]` 让 needle 落在 2001 字节之后时日志**看不出任何异样**——这不是「没命中」，是「没看全」。改成「哈希 + 头 400 字节 + 三形态全文计数」后才成立。**「我扫了全文还没命中」必须先证明「扫描器能命中我故意放进去的东西」**。
 - 判据自检的正确形式是「注入一个已知存在的东西，看它能否被看见」，而不是「拿它的某个特征去搜」。
 
 ## 边界（不得越过）
