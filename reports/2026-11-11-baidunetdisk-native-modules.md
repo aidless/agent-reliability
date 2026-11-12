@@ -75,15 +75,34 @@ napi_call_threadsafe_function(lVar5, __ptr, 0);
 **④ 谁在调它（`core.asar`，此前只扫了 `app.asar`）**：`require("uiohook-napi")`（off 78833954）、长按监听类（79312497）、`simulateCopy()` = 非 darwin 的 `keyTap(C,[Ctrl])`（79314940）、消费方 `.on("longPress")`（79741794）、`He()` = `clipboard.clear() → simulateCopy() → 500 ms 后读剪贴板`（79743310）、启停闸 `ipcMain.on(OPEN_DESKTOP_UPLOAD) → Se.start()`（79745740）。
 可得行为链：右键长按 ≥250 ms（或 Ctrl+1，`keycode 2` 在码表里是数字键 `1`）→ 钩子投递 → `emit("longPress")` → 清空剪贴板 → 合成 Ctrl+C → 500 ms 后 `readFiles()` 读回选中内容 → 面板显示/上传。
 
-**⑤ 端到端否定结果**：起动真实客户端两批（120 s / 75 s，Xvfb `:99`，隔离 HOME/XDG），7–8 个进程里 `main.js` 从 `core.asar` 加载成功、`registerShortcut: true`，但 **`/proc/<pid>/maps` 里 `uiohook` 与任何 `.node` 都是 0 行**，`app.log` 里 `uiohook` 命中 0/56 行。原因即 ④ 的启停闸：钩子按需启动，不是启动即加载。
+**⑤ 端到端：模块启动即加载，钩子按需启动（2026-11-11 更正）**：早先记「起动真实客户端两批（120 s / 75 s），`/proc/<pid>/maps` 里 `uiohook` 与任何 `.node` 都是 0 行 ⇒ 钩子未加载」——**判据错误**：Electron 把 asar 内 `.node` 解包成**随机名临时文件**（实测 `/data2/tmp/.org.chromium.Chromium.PlVgmi`），路径里不含 `uiohook` 字样，按路径名搜必然零命中。
 
-**方法论教训（可迁移）**：**「没有观测到」必须先证仪器对靶**。误判的代价是把「注入能力已实测」写成「无能力」，根因是观测通道（XRecord）与被观测机制（`XSendEvent`）不同源。正确判据是「同一时刻两个观测者看到什么差异」（`send_event=0` vs `=1`），不是「我的仪器收到几条」。
+改用**字节身份判据**（读 `/proc/<pid>/map_files/<addr>` 算 SHA-256，与已提取哈希比对）做 A/B：control 组 = 启动后不发 IPC；trigger 组 = 经 CDP 在 renderer 执行 `require('electron').ipcRenderer.send('openDesktop', 300, true)`。
+
+| 观测点 | control | trigger |
+|---|---|---|
+| 临时映射按 SHA-256 命中已知原生 | **3 个**（`uiohook_napi.node` 62,664 B / `NativeExtension.node` 14,040 B / `koffi.node` 5,944,784 B） | **3 个**（同左） |
+| `app.log` 中 `hook_thread_proc` 行 | **0** | **1** |
+| 关停时 `pre-stopping uiohook` / `fully released` | 0 / 0 | **1 / 1** |
+
+⇒ 拆成两条不可互相替代的结论：**① 模块加载 = 冷启动即 dlopen**（control 组同样命中，对应 `core.asar` off 78833954 的 `e.exports = require("uiohook-napi")`）；**② 钩子线程 = 按需启动**（判据是 `hook_thread_proc … Could not set thread priority 49` 只出现在 trigger 组）。
+
+IPC 频道字符串同时闭合：`OPEN_DESKTOP_UPLOAD` = **`"openDesktop"`**（`core.asar` off 78614860 / 78760702 / 88582424 三处同名常量）。完整证据卡：`~/rea-work-20261108/reports/2026-11-11-open-desktop-upload-loop.md`（SHA-256 `f4e934489b502fc8b57173b915e67ef4cf8facf9fe7eb40cc888018cf4edbeaa`），原始读数 `work/natives/dynamic/e2e_hash/{pre,post,control_post}.json`。
+
+**⑥ 网络面（同轮补测）**：`tcpdump` 与 `strace -p` 在本机均被权限拒绝（缺 CAP_NET_RAW / ptrace_scope），改走 `ss -tnp` A/B 差分 —— trigger 组 30 s 内新增 6 个远端端点，control 组新增 3 个且**全部包含在 trigger 组集合内** ⇒ 属周期性心跳/埋点，非钩子引起。**只能写「未观测到外传」，不能写「无外传」**（TLS 不可解析、无 payload 关联）。
+
+**方法论教训（可迁移，本卡踩了两次同一类错）**：
+
+- **第 1 次（`keyTap`）**：「没有观测到」必须先证仪器对靶。误判代价是把「注入能力已实测」写成「无能力」，根因是观测通道（XRecord）与被观测机制（`XSendEvent`）不同源。正确判据是「同一时刻两个观测者看到什么差异」（`send_event=0` vs `=1`），不是「我的仪器收到几条」。
+- **第 2 次（maps 判据）**：阳性对照只证明了「按**路径名**能看见」，没证明「这条尺子对 Electron 的**随机名解包**也有效」。真正对靶的判据必须建立在**不随载体改名而变的身份**——这里是内容 SHA-256，读 `/proc/<pid>/map_files/<addr>` 而不是 `/proc/<pid>/maps` 的路径字符串。
+- 两次的共同点：**把「看不见」当成「不存在」**。判据自检的正确形式是「注入一个已知存在的东西，看它能否被看见」，而不是「拿它的某个特征去搜」。
 
 ## 边界（不得越过）
 
 1. **反编译 ≠ 源码**。pseudocode 是 Ghidra 12.1.3 表示；结论只到「调了哪些 X11 / N-API 函数」，不到意图层。
 2. **只在 X11 分支成立**。Windows 走 `SET_WINDOWS_HOOK_EX`、macOS 走 AXAPI，本次未分析对应二进制。
-3. ~~**没有动态观测**~~ **2026-11-10 已补，见上节「动态补测」**：钩子确实收本地输入（XTEST 1:1）、`keyTap` 确实向焦点窗口投递合成事件（`send_event=1`）、真实客户端冷启动期间不加载该 `.node`。仍不能写「实测到键盘事件外泄」——需网络层关联证明事件被发往远端，本卡与动态卡都没做。
+3. ~~**没有动态观测**~~ **2026-11-10 已补，2026-11-11 更正第三点，见上节「动态补测」**：钩子确实收本地输入（XTEST 1:1）；`keyTap` 确实向焦点窗口投递合成事件（`send_event=1`）；模块**冷启动即加载**、钩子线程**按需启动**（不是「不加载」）。仍不能写「实测到键盘事件外泄」——网络 A/B 只到端点集合层，**未观测到**外传但未证否。⚠️ 不可再引用「冷启动期间不加载该 `.node`」，该结论建立在按路径名搜 `uiohook` 的错误判据上，已撤回。
+3b. **网络面的表达上限**：`tcpdump`（缺 CAP_NET_RAW）与 `strace -p`（ptrace_scope）均不可用，只能做 `ss -tnp` 端点集合差分。「control 端点集合 ⊆ trigger 端点集合」只否证「钩子引起新增端点」，不否证「已有的心跳连接承载了事件内容」。
 4. **`SortByKey` 已注册未导出**（`pc-electron-native-util/index.js` 只导 `BetterCompare`），`MakeAlwaysOnTop` 有符号无 JS 导出——「编译进去」不等于「运行时调用」。
 5. REA 的 JavaScript application graph 把 uiohook 记成 `native-addon` 节点（`native_addon_bindings: 1`），但**不展开符号级调用图**；本卡结论全部来自 `analyze` / `function` 两条独立路径。
 
