@@ -64,6 +64,23 @@
 `trae-sandbox` 里 `bwrap` 15 次、`unshare` 1 次；`seccomp` / `landlock` / `no-new-privs` / `ptrace` / `clone3` **均 0 次**；同目录直接带 `bwrap`（0.11.0）。
 ⇒ 任何「TRAE 沙箱能挡住 X」的表述，都得先回到这一条：bwrap 管的是**挂载/命名空间可见性**，不管系统调用白名单。
 
+### 2.4 导出符号面：三个模块共用同一套插件 ABI
+
+`readelf --dyn-syms` 去掉 `v8__*`/`rusty_v8*`/`_*` 之后：
+
+| 模块 | 导出 |
+|---|---|
+| `libharness.so` | `ai_agent_ipc_{init,connect,disconnect,recv}` + `BP_{Initialize,GetInterface,Shutdown}` + `bz_internal_error` |
+| `libai_agent.so` | 同上 8 个 + `crc_fast_*` |
+| `libtoolhost.so` | **只有** `BP_*` 三件套 + `bz_internal_error` |
+| `libckg.so` | `BP_*` + `array_*` / `bitmap_*` / `aes_desc` / **`authorizerTrampoline`** |
+
+1. **同一套插件 ABI**：外部只能通过 `BP_GetInterface` 拿接口表。`libtoolhost.so` 有 96 MB 却只导出 4 个符号——逻辑全在内部。
+2. **`libharness.so` 内嵌 V8 + inspector**：成排的 `v8__ValueSerialize`/`v8_inspector__V8*` + `rusty_v8_RustObj*`，配合 `ai_agent_ipc_*` ⇒ 「V8 运行时 + IPC 服务端」，即执行 JS 工具的那一层（也解释了 236 MB）。
+3. **`libckg.so` 内嵌 SQLite**：`sqlite3_prepare`×8、`PRAGMA`×57、`CREATE TABLE`×35、`authorizerTrampoline`（SQLite authorizer 回调）+ `aes_desc`。⇒ 代码知识图谱落在本地 SQLite，带 AES 与授权回调。
+
+**边界**：符号表与字符串层，没有函数级反汇编；`BP_GetInterface` 返回的接口表内容、IPC 消息格式都不在本次范围内。往下走要 Ghidra（本机不宜，需上云）。
+
 ## 3. 108 个内嵌扩展里的能力面
 
 publisher 分布：`vscode` 90、`byted-icube` 7、`cloudide` 4、`ms-vscode` 3、`trae`/`byted-solo`/`git-ai`/`icube` 各 1（109 目录，1 个无 manifest）。
@@ -76,6 +93,8 @@ publisher 分布：`vscode` 90、`byted-icube` 7、`cloudide` 4、`ms-vscode` 3�
 - 其它：`icube.figma.transform`、`larkCli.{install,checkUpdate,getCliStatus}`
 
 ⇒ agent 一旦被允许调这些命令，就能**对用户的 Supabase 项目执行迁移、读表结构**，并读 Stripe 价格表。是「能力面」不是「漏洞」，但威胁建模必须把它写进底物清单。
+
+**实现级复核（`dist/extension.js` 9,153,196 B）**：`applyMigration` 的 `query` **原样透传** `POST /v1/projects/{ref}/database/migrations`——Supabase 这条端点执行任意 SQL，所以「调一次工具」=「对用户 Supabase 项目执行一条任意 SQL」（可读全表、可 DDL）。Supabase 的 accessToken **不在扩展里**：`executeCommand(SAe)` 向宿主取，扩展只借用。另排掉一个误判：`child_process` 出现 13 次看似命令执行通道，实际是 bundler 的 builtin 版本表 + `execSync("ldd --version")` 判 libc（决定加载 `skia.linux-x64-gnu.node` 还是 `musl.node`）。`dist/bundled/` 自带 30 MB 的 `node-v24.14.0-linux-x64.tar.xz`。
 
 ### 3.2 `cloudide.icube-im-bridge`（35 条命令）
 
