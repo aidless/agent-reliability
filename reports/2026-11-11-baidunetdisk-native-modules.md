@@ -148,6 +148,64 @@ CDP 断点放在**加密之前**的函数帧上，直接读到明文（不是解
 
 **方法论教训第 6 次（归因谱新增一类 (e)）**：「不可解的载荷」不等于「永久黑箱」。上一版把 `jnmq` 写进「剩余风险」是对的（当时只能做字符串匹配），但把它当终点是偷懒——**只要明文在被加密之前存在过，就一定有某个时刻能被读到**。判据顺序应当是「能拿明文就先拿明文，拿不到才退回匹配密文」。另附六次仪器纠错：①`setBreakpointByUrl` 返 `locs: []` 当无效删断点（实为脚本未加载）；②按 `callFrame.url` 匹配（`paused` 里是空串）；③按变量名 `evaluateOnCallFrame` 撞闭包同名 function；④`241117` 实为 `ll` 不是 `la`（形参 `ld/lN/lQ` 遮蔽）；⑤app 起来后才 attach / 靠 reload 重发（首帧 5 s 内发完且 reload 不重发）；⑥`Input.dispatchKeyEvent` 发 webview target 0 条到达，必须发 `page` target 且先 `webview.focus()`。
 
+## ⑨ REA trace 层：补上 WorkBuddy，BaiduNetdisk 撞到 heap 投影（2026-11-13）
+
+### 9.1 现状矩阵（`~/rea-work-20261108/reports/TRACE_INDEX.md` 已同步）
+
+| 目标 | 条数 | 图规模 | 种子命中 | coverage |
+|---|---|---|---|---|
+| WorkBuddy | **5/5 全部新跑** | nodes 57,536 / edges 67,284 / observed 123,040 / inferred 700 / unavailable 21,531 | mcp **385**、consent 8、compact 65、approve 64、load-skills **422** | 全部 `partial` |
+| BaiduNetdisk | **5/5 全部新跑** | nodes 113,438 / edges 121,884 / observed 213,499 / inferred 1,136 / unavailable 57,982（`native_handoffs=7`） | mcp 2、consent 1、compact **124**、approve **0**、load-skills **0** | 前三条 `partial`，后两条 `no-match` |
+
+WorkBuddy 每条约 195–232 s、产出约 296 MB；BaiduNetdisk 的三条有效轨迹分别 631,144,558 / 631,145,488 / 622,280,694 B（consent 与 compact 各 902 s），两条 no-match 轨迹各约 2.1 KB（约 200 s）。
+
+**零命中要按负结果读**：approve 与 load-skills 在 BaiduNetdisk 的认证图里就是没有对应子串节点（该产品不暴露 MCP approve 概念），`coverage.status="no-match"` 与 `partial` 是两种结论，别混。判断「是负结果还是 stub」的判据：`{"ok":true,"data":{…"coverage":{"status":"no-match"}}}` = 负结果；`{"code":"invalid_request",…"reason":"invalid_value"…ENOENT}` = stub。
+
+### 9.2 BaiduNetdisk 的 1.1 GB evidence 不是「格式问题」而是「堆投影问题」
+
+默认堆（4.49 GB）下被 `resource_constraint` 拒：
+
+- `projected_value_bytes = 2,854,531,458` vs `available_heap_bytes = 2,854,466,024` ⇒ **差 65,434 B**
+- 抬到 6.64 GB（`--max-old-space-size=6144`）仍拒，且 **`projected` 跟着涨到 4,614,887,212**，available 4,613,463,120 ⇒ **差 1,424,628 B**
+- 抬到 12.3 GB（`--max-old-space-size=12288`）才真过
+
+**这条要当方法论读**：`projected_value_bytes` 是**随可用堆一起放大**的量（按比例估算物化需求），所以「差 65 KB，那多给 2 MB 就能跑」是错的读法。报错里两个数相减没有意义，必须先问「这个门槛会不会跟着我的参数动」。
+
+### 9.3 「能跑」和「跑得完」是两个判据
+
+12.3 GB 堆在 14 GB 物理内存上会把机器打进 swap。consent 条跑到 11 分钟仍未完，判据是 `/proc/<pid>/io`：
+
+- `rchar` 恒定 1,126,809,989（输入早已读完）
+- `read_bytes` 每 20 s 只涨 ~1.3 MB ⇒ **swap in，不是文件读**
+- `SwapFree` 从 10.7 GB 掉到 3.1 GB，`MemAvailable` 2.9 GB
+
+⇒ 我当时的判读是「进度停滞，杀掉」。**这个判读是错的**（见 9.3b）。
+
+### 9.3b 更正：「read_bytes 不涨」不能当停滞判据（同参数对照实验）
+
+同一脚本、同一 `--max-old-space-size=12288`，`consent` 条最终 **rc=0 / 902 s / 631,145,488 B** 跑完。
+
+也就是说：第一次被我按「`rchar` 恒定 + `read_bytes` 不涨」判死并杀掉的那个进程，**再给它 4 分钟就会出结果**。
+
+**错在哪**：`read_bytes` 衡量的是「块设备读入」。这个进程的 1.1 GB 输入在头几秒就全进了堆，后续是纯 CPU 解析 + 堆分配，**本来就不该有文件读**。我把「没有新的文件读」读成了「没有进展」——而这两件事在这个阶段完全独立。
+
+**可用判据**（按可靠性排序）：
+
+1. `/proc/<pid>/stat` 的 `utime+stime` 增量 —— 进程真在烧 CPU 吗（swap thrash 时也有，但配合 2、3 才判得准）
+2. `VmRSS` 增量 —— 堆在长吗（本次 2.7 → 3.15 GB 是持续增长的）
+3. 目标输出文件大小 —— 最直接，但 rea 是最后一次性写，全程 0 B
+
+**代价是实的**：杀掉一个会成功的进程，白等 11 分钟且必须重跑 15 分钟。这与本卡前面那六次仪器纠错同源——**否定性判据必须先在「已知会成功」的样本上校准过**，否则它只是在测自己的无知。
+
+### 9.4 重跑纪律（`/tmp/run_baidu_one.py`）
+
+跑前门槛 `MemAvailable ≥ 4.4 GB` 且 `SwapFree ≥ 6.4 GB`；单条 **20 分钟**硬超时（`killpg`）——这个超时值现在有实测支撑：最长的一条 902 s，20 分钟留了 33% 余量。
+门槛为什么降到 4.4 GB：这台机器（14 GB，长驻 dsh web 2.1 GB + Chrome 多 renderer）实测 `MemAvailable` 长期在 4.0–5.1 GB，**写 5.5 GB 门槛会永远等不到**——门槛值本身也要实测，不能凭「应该够」写。
+
+### 9.5 与网络面结论的关系
+
+**trace 层不产出新的外传结论**。它给的是「应用图里哪些节点与这些种子相连」，`coverage=partial` 且 `limitations` 明确写着「A trace reports graph relationships, not proof that code executed」。所以本卡的 ⑦/⑧ 两段只能支撑到「静态图 + 已观测的网络面」这个层级，不能替 ⑧ 的 A/B 读数说话。
+
 ## 边界（不得越过）
 
 1. **反编译 ≠ 源码**。pseudocode 是 Ghidra 12.1.3 表示；结论只到「调了哪些 X11 / N-API 函数」，不到意图层。
