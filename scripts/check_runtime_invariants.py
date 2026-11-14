@@ -23,10 +23,8 @@ B. OOD 返回值注入（`c1-ood-*`，每个 run 带 `ood.json`）
 from __future__ import annotations
 
 import argparse
-import glob
 import json
 import pathlib
-import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 RUNS = ROOT / "runs"

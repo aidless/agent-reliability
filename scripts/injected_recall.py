@@ -81,7 +81,6 @@ def main() -> int:
     args = ap.parse_args()
 
     sys.path.insert(0, args.mcp_guard_repo)
-    from guard.rules import scan_text      # noqa: E402
     from guard.scan import scan_tool       # noqa: E402
 
     corpus = load_corpus()
