@@ -338,3 +338,37 @@ MIT，见 [`LICENSE`](./LICENSE)。
 上游许可证：`mcp-guard` 与 `auditable-llm-eval` 均为 MIT；`agent-redteam` 的
 `data/attack_vectors.json` metadata 自述 Apache 2.0，而仓库根 `LICENSE` 是 MIT
 ——这个上游不一致已记录在覆盖率报告里。
+
+## 验收标准与复算
+
+**判据**：本仓判为合格的条件是 `python3 eval/run_cases.py` 通过率必须为 100%（20/20），且 `make eval` 退出码必须为 0；任何一条失败即判为不合格。
+
+`eval/cases.jsonl` 是 20 条可执行验收题，覆盖 8 个 axis，其中 18 条 `expr` 真调本仓 API
+（`rules/engine.py`、`contracts/validate.py`、`scripts/joint_decision_matrix.py`、
+`scripts/check_runtime_invariants.py`、`scripts/trace_integrity.py`）或真解析本仓数据文件
+（`config/*.jsonl`、`corpus/mcp-tools-20261028.json`、`runs/*`），期望值全部现算，不抄文档。
+
+| axis | 条数 | 覆盖的口径 |
+|---|---|---|
+| rules-engine | 3 | 规则集版本/条数、`engine.decide` 对漂移 run 的裁决 |
+| contracts | 3 | `check_run` 对两份真实 run 的校验、schema 缺字段错误 |
+| decision-matrix | 3 | 全组合枚举的 feasible 数、PASS 数、R1 触发数 |
+| runtime-invariants | 3 | trace/verdict 不变式、无 trace 的 run、逐题评分记录数 |
+| dataset-shape | 2 | 评测集条数、requires_tools 题数 |
+| predictions | 2 | 预测 id 覆盖、真实模型预测与数据集 id 对齐数 |
+| tool-corpus | 2 | 示例工具数、真实 MCP 工具总数 |
+| docs | 2 | README 判据句与失败归因段存在 |
+
+```bash
+python3 eval/run_cases.py            # 20/20 cases passed
+python3 eval/run_cases.py --save     # 顺带把结果写进 eval/run-report.json
+python3 eval/run_cases.py --selftest # 篡改一条期望值，必须变红（证明这套题会失败）
+```
+
+**数字如何复算**：`eval/run-report.json` 里每条 case 带 `id` / `axis` / `detail`，
+把 `detail` 与 `cases.jsonl` 的 `verify` 代码一起看，就能从源码或数据文件复现该数字；
+`--save` 重跑一次即可重建整份报告，不需要手工抄数。`make eval` 同时跑这套题库与既有
+`tests/`（60 项 unittest）。
+
+**失败归因（按 axis）**：`run_cases.py` 不只报 `pass_rate`，失败时按 axis 汇总（例如
+`docs: 2 条 —— AR-19, AR-20`），直接指出是哪个模块的哪个口径坏了，而不是只给一个总分。

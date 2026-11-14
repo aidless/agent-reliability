@@ -1,0 +1,129 @@
+{
+ "total": 20,
+ "passed": 20,
+ "failed": 0,
+ "selftest": false,
+ "failed_by_axis": {},
+ "results": [
+  {
+   "id": "AR-01",
+   "axis": "rules-engine",
+   "ok": true,
+   "detail": "1.0.0"
+  },
+  {
+   "id": "AR-02",
+   "axis": "rules-engine",
+   "ok": true,
+   "detail": "11"
+  },
+  {
+   "id": "AR-03",
+   "axis": "rules-engine",
+   "ok": true,
+   "detail": "BLOCK"
+  },
+  {
+   "id": "AR-04",
+   "axis": "contracts",
+   "ok": true,
+   "detail": "0"
+  },
+  {
+   "id": "AR-05",
+   "axis": "contracts",
+   "ok": true,
+   "detail": "0"
+  },
+  {
+   "id": "AR-06",
+   "axis": "contracts",
+   "ok": true,
+   "detail": "$: 缺少必填字段 'run_id'"
+  },
+  {
+   "id": "AR-07",
+   "axis": "decision-matrix",
+   "ok": true,
+   "detail": "1500"
+  },
+  {
+   "id": "AR-08",
+   "axis": "decision-matrix",
+   "ok": true,
+   "detail": "16"
+  },
+  {
+   "id": "AR-09",
+   "axis": "decision-matrix",
+   "ok": true,
+   "detail": "900"
+  },
+  {
+   "id": "AR-10",
+   "axis": "runtime-invariants",
+   "ok": true,
+   "detail": "0"
+  },
+  {
+   "id": "AR-11",
+   "axis": "runtime-invariants",
+   "ok": true,
+   "detail": "1"
+  },
+  {
+   "id": "AR-12",
+   "axis": "runtime-invariants",
+   "ok": true,
+   "detail": "5"
+  },
+  {
+   "id": "AR-13",
+   "axis": "dataset-shape",
+   "ok": true,
+   "detail": "3"
+  },
+  {
+   "id": "AR-14",
+   "axis": "dataset-shape",
+   "ok": true,
+   "detail": "5"
+  },
+  {
+   "id": "AR-15",
+   "axis": "predictions",
+   "ok": true,
+   "detail": "True"
+  },
+  {
+   "id": "AR-16",
+   "axis": "predictions",
+   "ok": true,
+   "detail": "5"
+  },
+  {
+   "id": "AR-17",
+   "axis": "tool-corpus",
+   "ok": true,
+   "detail": "4"
+  },
+  {
+   "id": "AR-18",
+   "axis": "tool-corpus",
+   "ok": true,
+   "detail": "53"
+  },
+  {
+   "id": "AR-19",
+   "axis": "docs",
+   "ok": true,
+   "detail": "本仓判为合格的条件是"
+  },
+  {
+   "id": "AR-20",
+   "axis": "docs",
+   "ok": true,
+   "detail": "失败归因（按 axis）"
+  }
+ ]
+}
