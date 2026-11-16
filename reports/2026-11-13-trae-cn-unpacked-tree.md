@@ -313,10 +313,35 @@ DATA 00 00000028 | 0a1c "icube.common.commands.health" | 1204 "null" | 1a00 | 22
 
 仅剩一条 WARN 是自造的：`sandbox trace scope is unavailable execution_id=`（空串）——回给 `SubscribeExecutionEvents` 的是空 protobuf。
 
+### 5.8.10 服务端流：一条 A/B 结论被换底物推翻（2026-11-16 补）
+
+§5.8.9 记的「空流让 `scope is unavailable` 归零、一元应答让它出现」**不成立**。把它做到底后，真正的结论是：
+
+- **`cmd.json` 曾是 0 字节**。mode=3（把 `SubscribeExecutionEvents` 当一元请求答掉）会拿它当应答载荷 ⇒ 空 protobuf ⇒ `execution_id` 空串 ⇒ 每条事件落入「scope 不可用」。测到的不是「一元 vs 流」，而是「**给的是一个空事件**」。
+- 把它换成 `{"capabilities":[]}`（20 B）后五轮重跑：mode=2（空流）与 mode=3 的 `scopeWARN` **都是 0**（0/0/0/0/0）。**原 A/B 差异随底物消失。**
+- 修好底物后的真差别在别处：mode=2 `recvFail=0`、流一直挂着；mode=3 或往流里推事件 `recvFail=32`，`SENT[stream-data]` 与 `RST_STREAM sid=1` 成对出现 ⇒ **harness 每收一条事件就 RST 掉这条流**。
+
+**`SandboxTraceEvent` 的字段号 ↔ 字段名**（用 wire type 不匹配喂 varint，prost 把名字写进报错，不必猜）：
+
+| 字段号 | 名字 | 旁证 |
+|---|---|---|
+| 1 | `session_id` | `invalid wire type: Varint (expected LengthDelimited)` |
+| 2 | `request_id` | 同上 |
+| 3 | `execution_id` | 同上 |
+| 4 | `sandbox_impl_type` | 同上 |
+| 5 | `event_name` | 同上 |
+| 6 | `categories` | `buffer underflow` ⇒ packed repeated |
+| 7 | `metrics` | 同上 |
+| 8+ | 不存在 | 无任何报错 |
+
+⇒ serde 的 `struct SandboxTraceEvent with 3 elements`（`eventName`/`categories`/`metrics`）与 proto 的 7 字段**不是同一套排序**：`event_name` 在第 5 位。四字段齐填 `EXEC-TEST` 后日志出现 `execution_id=EXEC-TEST` ⇒ **字节被完整解码、字段归属正确**；`trace_stream.rs` 的语义是「事件已解码但 telemetry scope 还没建，先丢」。
+
+`Execute` 的应答下一层：`{"capabilities":[]}` 消掉了 `invalid builtin Skill capabilities: EOF while parsing a value`，冒出 `decode CommandResponse failed: failed to decode Protobuf message: buffer underflow` ⇒ **应答必须是 protobuf，JSON 不行**（未解）。
+
 ## 6. 结论与边界
 
 **可用于能力审计的三条**：(a) 端点矩阵是「设计上的全集」，不等于运行时实际访问；(b) 「agent 能做什么」应以 §3 的命令清单为底物，不要以宣传页为底物；(c) 沙箱口径受限于 bwrap 的能力范围。
 
-**本轮没做**：运行时流量（无观测）；`.so` 的函数级逻辑（§5.5/§5.6/§5.7 已补 crate 边界、接口命名、IPC 协议形状与 **`BP_GetInterface` 的 ABI + 接口表前三项（三个 IPC 回调）**；`ai_agent_ipc_recv` 的**帧结构**已拿到前 40 条（§5.8.4，JSON-RPC 两个方法 + HTTP/2 前导），**HTTP/2 unary 应答已实现并验证**（§5.8.9，`gRPC response frame too short` 修掉后整轮 `ERROR` = 0），但 `SubscribeExecutionEvents` 的**服务端流**仍未做、`sandbox trace scope is unavailable` 仍以空 `execution_id` 复现；`DynamicConfigService` 已答（`authoritative remote config is ready`）；`agent-tool-host` 已到「517 条源码路径 + 34 个 `TOOLHOST_*` 变量」层，`trae-sandbox` 已到「NamespaceSandbox trait + bwrap 命令行逐字 + 无 seccomp」层，均无函数级细节；108 个扩展的 `dist/` 已做 sink 普查（`child_process` 74 文件 / `eval` 7 文件 / `shell.openExternal` 0，并逐条定性了 Emscripten 与 computer-use 两类）；遥测事件名抽取仍空；`~/.icube` 仍未定位；`trae-jwt-token` 已解为 **RS256 标准 JWT、无 scope 字段、7 天整、签名 512 B**。
+**本轮没做**：`CommandResponse` 的 protobuf 结构（应答必须是 proto 而非 JSON，`buffer underflow` 仍在）；`SandboxTraceEvent` 的 `sandbox_impl_type` 枚举取值与 `event_name` 字面量集合；`categories`/`metrics` 为 packed repeated 只有一条依据（无正面对照）；推事件触发 `RST_STREAM` 的下层原因；真 Electron 宿主下 `aha-rpc` 内部填表未观测；运行时流量（无观测）；`.so` 的函数级逻辑（§5.5/§5.6/§5.7 已补 crate 边界、接口命名、IPC 协议形状与 **`BP_GetInterface` 的 ABI + 接口表前三项（三个 IPC 回调）**；`ai_agent_ipc_recv` 的**帧结构**已拿到前 40 条（§5.8.4，JSON-RPC 两个方法 + HTTP/2 前导），**HTTP/2 unary 应答已实现并验证**（§5.8.9，`gRPC response frame too short` 修掉后整轮 `ERROR` = 0），`SubscribeExecutionEvents` 的**服务端流已做**（§5.8.10：开流有效，且原 A/B 结论被底物推翻）；`DynamicConfigService` 已答（`authoritative remote config is ready`）；`agent-tool-host` 已到「517 条源码路径 + 34 个 `TOOLHOST_*` 变量」层，`trae-sandbox` 已到「NamespaceSandbox trait + bwrap 命令行逐字 + 无 seccomp」层，均无函数级细节；108 个扩展的 `dist/` 已做 sink 普查（`child_process` 74 文件 / `eval` 7 文件 / `shell.openExternal` 0，并逐条定性了 Emscripten 与 computer-use 两类）；遥测事件名抽取仍空；`~/.icube` 仍未定位；`trae-jwt-token` 已解为 **RS256 标准 JWT、无 scope 字段、7 天整、签名 512 B**。
 
 **复算入口**：见证据卡 §10 的只读命令清单。
