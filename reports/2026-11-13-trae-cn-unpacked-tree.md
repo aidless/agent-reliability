@@ -130,10 +130,40 @@ Linux 后端（`linux-RQC5TI5Z.js`）是 **X11 命令拼装器**：`xdotool`、`
 
 `modules/ai-agent/checkpoint.sh`（302 B）是**给 agent 的自问自答提示词**：要求每次调工具前重读 RFC 全文、防止拿摘要冒充原文。配合 `trae-tob-git-ai-vscode` 的 `executeTraeCheckpoint` ⇒ checkpoint 在产品里是「上下文保真闸」，不是版本快照。
 
+## 5.5 `libharness.so` 能力面：46 个 crate / 1,410 源文件（2026-11-16 补）
+
+`modules/ai-agent/libharness.so`（**236,737,856 B**）是**带完整调试路径的 release 构建**：`.rodata` 保留了 Rust `file!()` 常量，panic 前缀是 `[harness-ffi]`。因此内部结构不需要 Ghidra —— `strings -a | grep 'harness/[^ ]*/src/[^ ]*\.rs' | sort -u` 两分钟给出 **1,410 条唯一源码路径**，按首段分组得 **46 个一级 crate**。
+
+> 本次探测同时否证了上一版 §6「符号级逆向需要重型工具」的前提：Ghidra 全量反编译这份 236 MB 需要 RAM 16 GB / 8 核 / 2–6 h，而 `strings` 给出的 crate 与模块边界比反编译更干净。**动手要机器之前先用最便宜的尺读一次目标**（`readelf -p .comment` / `readelf -S` / `strings`）。
+
+| crate | 路径数 | 一句话 |
+|---|---:|---|
+| `server` | 371 | 51 个 `src/modules/` 业务模块：`chat/*` + `lite/*` 双轨会话、`context`/`context_asset`/`docset`/`snapshot` 上下文装配群、**`computer_use`**、`terminal_selection`、`privacy_mode`、`content_security`、`mcp_apps`/`mcp_exec`、`git/{checkpoint,enterprise}`、`my_space`、`network_diagnostics`/`system_diagnosis`；`src/ffi_entry.rs` 是四个 `BP_*` 导出符号的实现处 |
+| `storage-db` | 113 | **86 条带日期迁移，跨度 2025-01-03 → 2026-10-22**；ORM = `sea-orm 1.1.20` + `sqlx-sqlite 0.8.6`。压缩治理有独立两条：`m20251030_add_micro_compacted_to_server_history_info`、`m20260330_add_micro_compact_strategy`；另有 `m20260210_add_truncated_above_to_history_v2`、`m20260604_add_fts5_search_tables`、`m20260608_optimize_resurrection_backup_indexes` |
+| `tools` | 86 | **47 个工具**：`apply_patch`(6 文件) / `mcp_call`(7 文件) / `finish`（`aigc`、`design_discovery`、`design_products`、`native_browser` 四分支）/ `read`(6 文件) / `file_read_guard` / `read_dedup` / `contextfs` / `media_budget` / `todo_write`(7 文件) |
+| `hub` | 68 | 云桥：22 个 CLI 路由 + `events/{event_cache,state_forwarder,notifier}` + `sync/{forked_session,remote,scheduled_tasks}` + 网络层 `sse`/`ws`/`message_queue`/`fallback`/`upstream`；`conversation/policy.rs` ⇒ 会话行为受**云侧策略**控制 |
+| `types` | 59 | 全部 DTO/trait：`hook/traits`、`permission/{command_matcher,deferred,provider}`、`request_patch/{apply,prepend,resolved_context}`、`tool/output_erasure`、`products/path_extraction`、`sandbox` |
+| `hooks` | 52 | **23 个上下文解析器**（`ide_mention/*` 占 6：文件代码/目录/问题/规则/网页/网页支持）+ `dispatch/{topology,accumulate,terminal_outcome}` + `impl/src/merge_hook/*`（`pr_generation`）+ `persistence/*` 七段钩子 |
+| `browseruse` | 30 | 内建浏览器：13 个 handler（`script`、`ownership`、`dialog`、`element_query`、`form`、`keyboard`、`media`、`navigation`、`observability`、`pointer`、`preview`、`tabs`、`wait`）+ `preview_sessions` 隔离 + `screenshot_service` |
+| `core` | 27 | `v4/runner/{turn,agent/llm/{committing,consuming,subagent}}` 三层；`shared/{context_usage,tool_cache,async_toolcall/deferred_runtime}` |
+| `custom-model-proxy` | 24 | 模型双通路：`provider/aws/*`（Bedrock 直连）+ `tunnel/*`（WS、分块重组、重试、流管理） |
+| `command` | 21 | `exec_command`/`background_command`/`check_command_status`/`stop_command`/`write_stdin`/`output_spill`/`sandbox_recovery` |
+| `toolhost-client` | 21 | 与 `agent-tool-host` 的 RPC 契约：`command_wire`、`contract_executor`、`hook_stream_client`、`sandbox_trace_stream`、`resource_routing_executor` |
+| `permission` | 16 | `command_safety/{extract_shell_cmds,is_dangerous_command}`、`script_safety/file_effects`、`sandbox_paths` |
+| 其余 | — | `cloud-api`15 `event-cache`15 `design-library`14 `handoff`14（`down`/`restore`）`assistant`13 `plugin`13 `plugin-recommendation`8 `lark`11 `memory`11 `skills`10 `workflow`10 `history-archive`9 `user-hooks`9（含 `enterprise`）`telemetry`8 `schedule`7 `towel`6 `enterprise-config`5 `file-finder`5 `goal`5 `auto-review`4 `ckg`4 `ralph-loop`4 `apiserver`3 `spawn`3 `tob`2，以及 `chronicle` / `html-share` / `image-processing` / `multimodal` / `remote` 各 1 |
+
+**第三方依赖画像（259 个唯一 `name-version`）**：`aws-sdk-bedrockruntime 1.135.0` + `aws-config`/`aws-sdk-sts`/`aws-sdk-sso`/`aws-sdk-ssooidc`/`aws-smithy-*`（Bedrock 是一等模型通路）；`v8 130.0.7`（内嵌 V8）；`oxc_parser`+`oxc_semantic 0.139.0`（JS/TS 静态分析，对应 `get_diagnostics`/`search_codebase`）；`rav1e 0.7.1`（AV1 编码器 ⇒ `generate_video` 自己编码）；`sea-orm 1.1.20`/`sqlx-sqlite 0.8.6`；`tree-sitter`（8 处）；`rustls 0.23.40`+`aws-lc-rs 1.17.0`+`ring 0.17.14`（`DT_NEEDED` 只有 9 个系统库，无 `libstdc++`/`libssl`）；`tera`、`moka`、`tokio-tungstenite`。**`tiktoken` 0 命中、`pdf-extract` 0 命中** ⇒ 分词与 PDF 解析自研。
+
+**一处层级修正**：`computer_use` 在 **`server/modules/` 主进程内**是一等模块；§3.3 那 22 个工具是**扩展层**的 `computer-use-mcp`。两层不是同一件事，别互相代替。
+
+**`BP_*` 仍是壳**：`BP_GetInterface`（`0x52139b0`，275 B）只把 `("BP_GetInterface", 15)` 放到栈上再 `call 0xd5f1e30`（`.text` 内，`R_X86_64_RELATIVE`）⇒ 接口表**运行时构造**，不是 `.rodata` 常量数组。`BP_Initialize` 2,483 B / `BP_Shutdown` 909 B / 四个 `ai_agent_ipc_*` 各 491 B（近等长 ⇒ 同一格式化宏）。
+
+**证据**：主工作区 `reports/2026-11-16-harness-crate-surface.md`（380 行，SHA256 `6d1ad05fa6bec20e…`）；原始清单 `work/harness-ffi/harness_source_paths.txt`（1,410 行）、`thirdparty_crates.txt`（259 行）。
+
 ## 6. 结论与边界
 
 **可用于能力审计的三条**：(a) 端点矩阵是「设计上的全集」，不等于运行时实际访问；(b) 「agent 能做什么」应以 §3 的命令清单为底物，不要以宣传页为底物；(c) 沙箱口径受限于 bwrap 的能力范围。
 
-**本轮没做**：运行时流量（无观测）；`.so` 的符号级逆向（只有字符串与结构清单，无 `nm`/objdump/Ghidra）；`agent-tool-host` 与 `trae-sandbox` 的内部机制；108 个扩展的 `dist/` 实现（`builtin-mcp` 除外）；遥测事件名抽取（`out/main.js` 按 `(icube|trae|solo)[._]` grep 返回空，事件名应为运行时拼接）；`~/.icube` 定位；`trae-jwt-token` 的 scope 与有效期。
+**本轮没做**：运行时流量（无观测）；`.so` 的函数级逻辑（§5.5 已补 crate/模块边界，但 `BP_GetInterface` 返回的接口表内容与 `ai_agent_ipc_recv` 的消息结构仍未还原）；`agent-tool-host` 与 `trae-sandbox` 的内部机制；108 个扩展的 `dist/` 实现（`builtin-mcp` 除外）；遥测事件名抽取（`out/main.js` 按 `(icube|trae|solo)[._]` grep 返回空，事件名应为运行时拼接）；`~/.icube` 定位；`trae-jwt-token` 的 scope 与有效期。
 
 **复算入口**：见证据卡 §10 的只读命令清单。
