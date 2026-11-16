@@ -210,10 +210,80 @@ Linux 后端（`linux-RQC5TI5Z.js`）是 **X11 命令拼装器**：`xdotool`、`
 
 **证据**：主工作区 `reports/2026-11-16-harness-crate-surface.md` §17.14（八小节，含 4 条复算命令）；探针在 `work/harness-ffi/probe_{names,table,fault,out,getif}.c`。
 
+## 5.8 最小宿主实测：BootConfig 被接受、IPC 帧落地（2026-11-16 补）
+
+上一节把 `BP_GetInterface` 的 ABI 定了，但**三个回调从未被真正调用过**——因为调用它们的 `server` 句柄要由 `BP_Initialize` 产出，而 `BP_Initialize` 需要一个宿主。本节就是那个宿主。
+
+### 5.8.1 四道关：三个环境变量 + 一份 BootConfig
+
+| # | 缺什么 | 报错关键词 |
+|---|---|---|
+| 1 | `HARNESS_CLOUD_URL` | `set HARNESS_CLOUD_URL or provide agent.domain in boot-config` |
+| 2 | `HARNESS_COPILOT_APP_ID` | `set HARNESS_COPILOT_APP_ID, COPILOT_APP_ID, or provide agent.appId` |
+| 3 | `ICUBE_MODULAR_DATA_DIR` | `is required for DB persistence` |
+| 4 | `BootConfig` 应答被接受 | `deserialize BootConfig failed: Error("missing field \`X\`")` |
+
+前三关是环境变量。第四关是**协议内容**：宿主必须对 `BootService.getBootConfig` 回一个能反序列化的 `result`。
+
+### 5.8.2 被接受的最小配置
+
+```json
+{"agent":{"domain":"https://example.invalid","appId":"probe-app","misc":{"ideCn":"https://example.invalid","ideUs":"https://example.invalid","bytegate":"https://example.invalid","iac":"https://example.invalid"}},"ckg":{"domain":"https://example.invalid"},"slardar":{"bid":"trae_cn","domain":"https://example.invalid","aid":787976,"token":"t","supportChangeInstance":false,"engine":"slardar"},"ws":["https://example.invalid"]}
+```
+
+被接受的证据：`runtime boot-config update applied update_kind=IdentityChanged version=1`。
+
+**两处反直觉**：(a) `slardar.aid` 要**数字**（给字符串报 `expected u32`），而 `agent.appId` 要**字符串**——同名字段不同型；(b) 顶层 `ws` 是**单元素数组**不是对象（`[]` 报 `invalid length 0, expected struct WSConfig with 1 element`）。
+
+### 5.8.3 boot 之后的关键变化
+
+```
+[towel] IPC server bound service=ai-agent
+runtime boot-config update applied update_kind=IdentityChanged version=1
+starting harness-server build_commit="unknown" listen=[::]:8080
+[DB] init_db_persistence / initialize / migrations / health check passed / init_db_persistence ok
+starting desktop IPC routes on bound service service=ai-agent
+[towel] IPC server started from bound service service=ai-agent
+```
+
+上一节卡的 `failed to start IPC server: failed to get BB_IPC_SERVER;1.0 from browser` **消失**。⇒ 宿主回真 SERVER 表 + 接受 BootConfig = towel IPC 服务真的绑上。
+
+**但 8080/9000/8999 全程不监听**：入口经 **towel/Aha（进程内 IPC + ZMQ）**，`listen_addr` 只是配置意图。**`ss -ltn` 不是「serve 起没起」的判据。**
+
+### 5.8.4 抓到的 IPC 帧
+
+```
+{"jsonrpc":"2.0","id":0,"method":"BootService.getBootConfig"}                    61 B
+{"jsonrpc":"2.0","id":1,"method":"DynamicConfigService.getConfigWhenPullDone"}   78 B
+```
+
+其余 38 条（共 40 条）是 **HTTP/2 明文前导**：`PRI * HTTP/2.0` + SETTINGS 帧 + 一条 122 B HEADERS+DATA。
+
+⇒ `sandbox-trace-stream` 与 `toolhost-ipc` 的日志错误 `http2 error` / `HTTP/2 connection closed` 是**「无应答」不是「连不上」**——两条链路在同一 IPC 通道上走 HTTP/2。
+
+### 5.8.5 起来之后剩的四个失败面（全是「没答」）
+
+| 失败面 | 日志 | 根因 |
+|---|---|---|
+| dynamic config | `AHA IPC config source is not initialized` | 未答 `DynamicConfigService` |
+| sandbox trace | `sandbox-trace-stream: http2 error` | HTTP/2 帧无应答 |
+| toolhost IPC | `toolhost-ipc: HTTP/2 request failed: http2 error` | 同上 |
+| profile | `Assistant profile requires the native Aha transport; tool registration skipped backend="reqwest"` | 预期行为 |
+
+### 5.8.6 边界
+
+1. BootConfig 只解出 4 个子结构（`agent`/`misc`/`ckg`/`slardar`+`ws`），其余 16 个顶层字段未逐个验证；被接受的那份是「够用」不是「最小」。
+2. `ws` 为何是数组形态未查。
+3. **`ss -ltn` 空 ≠ 没起来**（本条是本轮差点误判之处）。
+4. HTTP/2 应答未实现，两条链路仍未闭环。
+5. 本节全部是「宿主侧自己搭的环境」里的读数，未在真 Electron 宿主下复现。
+
+**复算**：见证据卡 §18.13。
+
 ## 6. 结论与边界
 
 **可用于能力审计的三条**：(a) 端点矩阵是「设计上的全集」，不等于运行时实际访问；(b) 「agent 能做什么」应以 §3 的命令清单为底物，不要以宣传页为底物；(c) 沙箱口径受限于 bwrap 的能力范围。
 
-**本轮没做**：运行时流量（无观测）；`.so` 的函数级逻辑（§5.5/§5.6/§5.7 已补 crate 边界、接口命名、IPC 协议形状与 **`BP_GetInterface` 的 ABI + 接口表前三项（三个 IPC 回调）**；`ai_agent_ipc_recv` 的**帧结构**仍未还原）；`agent-tool-host` 与 `trae-sandbox` 的内部机制；108 个扩展的 `dist/` 实现（`builtin-mcp` 除外）；遥测事件名抽取（`out/main.js` 按 `(icube|trae|solo)[._]` grep 返回空，事件名应为运行时拼接）；`~/.icube` 定位；`trae-jwt-token` 的 scope 与有效期。
+**本轮没做**：运行时流量（无观测）；`.so` 的函数级逻辑（§5.5/§5.6/§5.7 已补 crate 边界、接口命名、IPC 协议形状与 **`BP_GetInterface` 的 ABI + 接口表前三项（三个 IPC 回调）**；`ai_agent_ipc_recv` 的**帧结构**已拿到前 40 条（§5.8.4，JSON-RPC 两个方法 + HTTP/2 前导），但 **HTTP/2 应答未实现**（`sandbox-trace-stream`/`toolhost-ipc` 仍未闭环）；`DynamicConfigService` 未答；`agent-tool-host` 已到「517 条源码路径 + 34 个 `TOOLHOST_*` 变量」层，`trae-sandbox` 已到「NamespaceSandbox trait + bwrap 命令行逐字 + 无 seccomp」层，均无函数级细节；108 个扩展的 `dist/` 已做 sink 普查（`child_process` 74 文件 / `eval` 7 文件 / `shell.openExternal` 0，并逐条定性了 Emscripten 与 computer-use 两类）；遥测事件名抽取仍空；`~/.icube` 仍未定位；`trae-jwt-token` 已解为 **RS256 标准 JWT、无 scope 字段、7 天整、签名 512 B**。
 
 **复算入口**：见证据卡 §10 的只读命令清单。
