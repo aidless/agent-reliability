@@ -275,15 +275,48 @@ starting desktop IPC routes on bound service service=ai-agent
 1. BootConfig 只解出 4 个子结构（`agent`/`misc`/`ckg`/`slardar`+`ws`），其余 16 个顶层字段未逐个验证；被接受的那份是「够用」不是「最小」。
 2. `ws` 为何是数组形态未查。
 3. **`ss -ltn` 空 ≠ 没起来**（本条是本轮差点误判之处）。
-4. HTTP/2 应答未实现，两条链路仍未闭环。
+4. ~~HTTP/2 应答未实现，两条链路仍未闭环。~~ **已被 §5.8.9 取代**：unary 路径已实现并验证；仅 `SubscribeExecutionEvents` 的服务端流仍未做。
 5. 本节全部是「宿主侧自己搭的环境」里的读数，未在真 Electron 宿主下复现。
 
-**复算**：见证据卡 §18.13。
+**复算**：§5.8.1–5.8.6 见证据卡 §18.13；§5.8.7–5.8.9 见证据卡 §19.7。
+
+### 5.8.7 回包槽位：`CLIENT[0]` 才是发送槽（2026-11-16 补）
+
+§5.8 说「`send` 通道可用、只是 schema 不合」，但当时**没验槽号**。四个槽 A/B（同一份 `boot.json`）：
+
+| 槽 | `send_ret` | `boot-config update applied` | `authoritative remote config is ready` |
+|---|---|---|---|
+| `CLIENT[0]` | 0 | **1** | **1** |
+| `CLIENT[1..3]` | 0 | 0 | 0 |
+
+⇒ **`send_ret=0` 不是「发出去了」的判据**，四个槽里三个都返回 0（那两个是未初始化的洞）。唯一可靠判据是**下游行为**。
+
+换回 `[0]` 之后：`AHA IPC config source is not initialized`、`sandbox-trace-stream: http2 error`、`toolhost-ipc: http2 error` **三条全部归零**；`GoalLoop` 从 `disabling module` 翻成 `enabled=true policy=Authoritative`；装配日志 `module_count=67 api_route_count=284 hook_count=11 tool_count=30`。
+
+### 5.8.8 IPC 上是 gRPC，只有两个方法（2026-11-16 补）
+
+用 `hyperframe` + `hpack` 解 HEADERS：
+
+```
+:path=/command.CommandService/Execute                        content-type=application/grpc  te=trailers
+:path=/command.CommandService/SubscribeExecutionEvents
+DATA 00 00000028 | 0a1c "icube.common.commands.health" | 1204 "null" | 1a00 | 2200
+```
+
+⇒ (a) IPC 上跑的是 **gRPC 一元 + 服务端流**，不是 REST；(b) 首次 `Execute` 是 **`health` 探活，参数是字面量 `null`**。
+
+### 5.8.9 自建 HTTP/2 应答器（`probe_grpc.c`）
+
+只用 9 字节帧头拼装，不依赖任何 HTTP/2 库：preface→SETTINGS；SETTINGS→ACK；DATA(END_STREAM)→`:status 200`+`content-type: application/grpc`+DATA(**1 字节压缩位 + 4 字节大端长度** + payload)+trailers `grpc-status: 0`。
+
+第一版把长度前缀写成 3 字节（省掉压缩标志位），harness 直接报 **`gRPC response frame too short elapsed_ms=15`**；改成 5 字节后该报错消失，整轮 `ERROR` 计数 = **0**。这是本轮唯一一个「报错文案直接点出病灶」的例子。
+
+仅剩一条 WARN 是自造的：`sandbox trace scope is unavailable execution_id=`（空串）——回给 `SubscribeExecutionEvents` 的是空 protobuf。
 
 ## 6. 结论与边界
 
 **可用于能力审计的三条**：(a) 端点矩阵是「设计上的全集」，不等于运行时实际访问；(b) 「agent 能做什么」应以 §3 的命令清单为底物，不要以宣传页为底物；(c) 沙箱口径受限于 bwrap 的能力范围。
 
-**本轮没做**：运行时流量（无观测）；`.so` 的函数级逻辑（§5.5/§5.6/§5.7 已补 crate 边界、接口命名、IPC 协议形状与 **`BP_GetInterface` 的 ABI + 接口表前三项（三个 IPC 回调）**；`ai_agent_ipc_recv` 的**帧结构**已拿到前 40 条（§5.8.4，JSON-RPC 两个方法 + HTTP/2 前导），但 **HTTP/2 应答未实现**（`sandbox-trace-stream`/`toolhost-ipc` 仍未闭环）；`DynamicConfigService` 未答；`agent-tool-host` 已到「517 条源码路径 + 34 个 `TOOLHOST_*` 变量」层，`trae-sandbox` 已到「NamespaceSandbox trait + bwrap 命令行逐字 + 无 seccomp」层，均无函数级细节；108 个扩展的 `dist/` 已做 sink 普查（`child_process` 74 文件 / `eval` 7 文件 / `shell.openExternal` 0，并逐条定性了 Emscripten 与 computer-use 两类）；遥测事件名抽取仍空；`~/.icube` 仍未定位；`trae-jwt-token` 已解为 **RS256 标准 JWT、无 scope 字段、7 天整、签名 512 B**。
+**本轮没做**：运行时流量（无观测）；`.so` 的函数级逻辑（§5.5/§5.6/§5.7 已补 crate 边界、接口命名、IPC 协议形状与 **`BP_GetInterface` 的 ABI + 接口表前三项（三个 IPC 回调）**；`ai_agent_ipc_recv` 的**帧结构**已拿到前 40 条（§5.8.4，JSON-RPC 两个方法 + HTTP/2 前导），**HTTP/2 unary 应答已实现并验证**（§5.8.9，`gRPC response frame too short` 修掉后整轮 `ERROR` = 0），但 `SubscribeExecutionEvents` 的**服务端流**仍未做、`sandbox trace scope is unavailable` 仍以空 `execution_id` 复现；`DynamicConfigService` 已答（`authoritative remote config is ready`）；`agent-tool-host` 已到「517 条源码路径 + 34 个 `TOOLHOST_*` 变量」层，`trae-sandbox` 已到「NamespaceSandbox trait + bwrap 命令行逐字 + 无 seccomp」层，均无函数级细节；108 个扩展的 `dist/` 已做 sink 普查（`child_process` 74 文件 / `eval` 7 文件 / `shell.openExternal` 0，并逐条定性了 Emscripten 与 computer-use 两类）；遥测事件名抽取仍空；`~/.icube` 仍未定位；`trae-jwt-token` 已解为 **RS256 标准 JWT、无 scope 字段、7 天整、签名 512 B**。
 
 **复算入口**：见证据卡 §10 的只读命令清单。
