@@ -164,6 +164,8 @@ Linux 后端（`linux-RQC5TI5Z.js`）是 **X11 命令拼装器**：`xdotool`、`
 
 **接口名是版本化的，前缀被 LLVM 尾部合并吃掉**：`0xd5f1e30`（`BP_GetInterface` 的唯一被调方，约 0x210 B）只引用 4 个 `.rodata` 串 —— `…ER_INTERFACE_1_0`、`…ER_INTERFACE;1.0`、`…BP_IPC_SERVER_IN…`、`…NT_INTERFACE;1.0`。**`grep 'BP_INTERFACE'` 全库 0 命中**（`SERVER_INTERFACE` 的 `SERVER` 与别处的 `BP_IPC_SERVER` 共用字节）。能确认的是**两种命名形态并存**（下划线 `_1_0` / 分号 `;1.0`）与一个独立接口 `BP_IPC_SERVER`；完整名字不能确认。
 
+> ⚠️ **本段结论已被 §5.7 的 `dlopen` 实测推翻**：唯一注册名是 **`BP_IPC_SERVER;1.0`**，`SERVER_INTERFACE;1.0` / `BP_INTERFACE;1.0` / `BP_INTERFACE_1_0` 查表**全部返回 0**。那两串 `…ER_INTERFACE_1_0` / `…ER_INTERFACE;1.0` 是别的常量（与 `connection.state`/`TransferredBytes`/`expand 32-byte k` 同段），不是查询键。⇒ **「常量出现在某函数附近」只说明它被同一段代码引用，不说明它就是那个返回值。**
+
 **每个 `BP_*` 有私有 GOT 槽**：扫 `.text` 全段（164,247,484 B）的 `ff 15` 形态，槽 `0xe167b38`（→`0xd5f1e30`）**调用者数 = 1**，唯一调用点即 `BP_GetInterface`；槽 `0xe167b40`（→`0xd5ee9d0`）也只有 1 个，落在 `BP_Initialize` 体内 ⇒ 不是共享 helper。最热的两个槽是 `0xe167b00`（37 调用者）与 `0xe167b08`（28）。
 
 **`ffi_entry.rs` 只有 4 个 `file:line` 锚点**（286 / 293 / 300 / 307），但配套日志串给出完整状态机：`failed to initialize tracing` → `failed to build Tokio runtime` → **`failed to pre-bind desktop IPC service`** → `BP_Initialize called` → `rejected: runtime is already active` → `server main task failed; terminating host process` / `main task drained`；关闭侧 `BP_Shutdown called` → `found no active runtime` → `failed to spawn BP_Shutdown worker` → `worker join failed` → `AHA transport shutdown panicked`（`:307`，被 `catch_unwind` 包住），线程名 `harness-bp-shutdown`。`BP_Initialize` 的 2,483 B 反汇编里 41 个 `# addr` 只有 6 个落 `.rodata`，正是上面前五个 ⇒ **顺序是读出来的，不是猜的**。「pre-bind」本身是结论：监听端点在交给宿主前已绑定占位。
@@ -184,14 +186,34 @@ Linux 后端（`linux-RQC5TI5Z.js`）是 **X11 命令拼装器**：`xdotool`、`
 
 **1,932 条 `file:line` 锚点可作反向索引**：这是 `tracing` 的 `file!():line!()` 常量，只有真打了 event 的位置才有 ⇒ 比数路径条数更能判「哪个文件有实质逻辑」。七个主 crate 占 1,130 条。
 
-**本节边界**：`&'static str` 那个参数的确切 ABI 角色未定（`BP_GetInterface` 从不设 `rdi`/`rsi`，两种读法都自洽，判定只需一次 `dlopen`+`dlsym` 真实调用）；上述全部为静态证据，**无运行时验证**（没抓 IPC 帧、没看 `BP_IPC_SERVER` 被谁连）。
+**本节边界**：本节全部为静态证据。`&'static str` 的 ABI 角色、接口表内容两处已在 **§5.7** 用 `dlopen` 关掉；**仍未关的**是 IPC 帧结构与 `BP_IPC_SERVER` 的真实连接方。
 
-**证据**：主工作区 `reports/2026-11-16-harness-crate-surface.md` §17（652 行，SHA256 `e32fdae8553f363f…`）。
+**证据**：主工作区 `reports/2026-11-16-harness-crate-surface.md` §17（本轮收尾时 796 行，SHA256 `43808bdf99644feb…`）。
+
+## 5.7 `dlopen` 实测：`BP_GetInterface` 的 ABI 与接口表（2026-11-16 补）
+
+§5.6 收尾时悬着的「`&'static str` 参数的角色」已用 `dlopen`/`dlsym` 关掉，并顺带推翻 §5.6 首段与「表是运行时构造」两条结论。工具：`gcc 13.3.0`，5 个探针，`ulimit -c 0` + `timeout`。
+
+**实测签名**：`const void *BP_GetInterface(const char *name, size_t name_len)`。判据是「换名字返回值就变」——26 个候选名逐个查表，**只有 `BP_IPC_SERVER;1.0`（len 17）返回非 0**；`BP_IPC_SERVER`、`BP_INTERFACE`、`SERVER_INTERFACE`、`SERVER_INTERFACE;1.0`、`BP_INTERFACE;1.0`、`BP_INTERFACE_1_0`、`harness*`、`byted_aha_ffi`、`aha*`、`ipc*`、`Interface`、`v1`、`1.0`、`""` 全部 0；版本变体 `;1.1`/`;2.0`/`;0.9`/`;1`/`;`/`;1.0.0` 也全部 0 ⇒ **`;1.0` 必须逐字精确**。同一进程二次调用返回**同一指针**。
+
+**表在 `.data.rel.ro`，不是运行时构造**：表指针 − so base = `0xe125ae8`，落在 `.data.rel.ro`（vaddr `0xdb0b980` / size `0x650c80`）⇒ 静态初始化 + `R_X86_64_RELATIVE` 重定位。`BP_GetInterface` 只做「名字比较 + 返回地址」。
+
+**表的前三项是三个 IPC 回调，顺序 `on_connected` → `on_message` → `on_disconnected`**：`[0]=0xd5f0570` 引用 `BP_IPC_SERVER: on_connected called, server=`；`[1]=0xd5ef140` 引用 `… on_message called with empty data, server=`；`[2]=0xd5f2ff0` 引用 `… on_disconnected, server=`；三者都还引用 `tracing::span::active`。`[3]` 起是 `tracing` 静态元数据（成对 `(ptr,len)`：`"handle"`(6)、`"bp_client_on_message"`(20)、`"byted_aha_ffi::ffi"`(18)、一条 `aha-rpc` 的 `ffi.rs` 绝对路径(83)）。
+
+**上游 crate = `aha-rpc`（bytedance git 依赖），FFI 符号归属 `byted_aha_ffi`**：8 条 git 路径全指 `/root/.cargo/git/checkouts/aha-rpc-793dace3696119f7/0bb859b/aha-ffi-rust/src/{ffi.rs,ipc.rs,aha_net/{download,http,ws}.rs}`。`harness_server::ffi` 是另一层。`aha_net` 三模块 = 这层 FFI 自带 HTTP / WebSocket / 下载三条网络能力。
+
+**`BP_Initialize` 无参调用会 panic，但查表不依赖它**：`BP_Initialize()` → `thread '<unnamed>' panicked at .../once_lock.rs:280:52: called Option::unwrap() on a None value` → `[harness-ffi] BP_Initialize panicked` → 返回 `0xffffffff`。而所有接口表读数都在未初始化进程里取得 ⇒ 查表路径独立于初始化。
+
+**一条假阳教训（新增的第七种「没有观测到」的病因）**：用 `register uint64_t rdi __asm__("rdi")=0` 钉寄存器的那版探针报过 SIGSEGV，换一种写法用同样 rdi=0/rsi=0 复跑**返回 0、不崩** ⇒ 那是 **GCC 寄存器约束处理**的假象，不是库行为。前六种病因是 (a) 机制不存在 (b) 仪器看不见 (c) 看错对象 (d) 前置条件不成立 (e) 尺度自己造的 (f) 判据读错底物；第 (g) 种是**测量代码本身有 bug**。防线与 (b) 相反：(b) 要造一个能被看见的信号，(g) 要**换一种写法做同一件事**。
+
+**仍未关**：IPC 帧结构（只有方法名与错误串，无字段级 schema）；三个回调**从未被真正调用过**（需要 `BP_Initialize` 产出的 `server` 句柄）；`BP_Initialize` 要什么宿主环境才能成功。
+
+**证据**：主工作区 `reports/2026-11-16-harness-crate-surface.md` §17.14（八小节，含 4 条复算命令）；探针在 `work/harness-ffi/probe_{names,table,fault,out,getif}.c`。
 
 ## 6. 结论与边界
 
 **可用于能力审计的三条**：(a) 端点矩阵是「设计上的全集」，不等于运行时实际访问；(b) 「agent 能做什么」应以 §3 的命令清单为底物，不要以宣传页为底物；(c) 沙箱口径受限于 bwrap 的能力范围。
 
-**本轮没做**：运行时流量（无观测）；`.so` 的函数级逻辑（§5.5/§5.6 已补 crate 边界、接口命名形态与 IPC 协议形状，但 `BP_GetInterface` **返回的接口表里有哪些函数指针**、`ai_agent_ipc_recv` 的消息结构仍未还原）；`agent-tool-host` 与 `trae-sandbox` 的内部机制；108 个扩展的 `dist/` 实现（`builtin-mcp` 除外）；遥测事件名抽取（`out/main.js` 按 `(icube|trae|solo)[._]` grep 返回空，事件名应为运行时拼接）；`~/.icube` 定位；`trae-jwt-token` 的 scope 与有效期。
+**本轮没做**：运行时流量（无观测）；`.so` 的函数级逻辑（§5.5/§5.6/§5.7 已补 crate 边界、接口命名、IPC 协议形状与 **`BP_GetInterface` 的 ABI + 接口表前三项（三个 IPC 回调）**；`ai_agent_ipc_recv` 的**帧结构**仍未还原）；`agent-tool-host` 与 `trae-sandbox` 的内部机制；108 个扩展的 `dist/` 实现（`builtin-mcp` 除外）；遥测事件名抽取（`out/main.js` 按 `(icube|trae|solo)[._]` grep 返回空，事件名应为运行时拼接）；`~/.icube` 定位；`trae-jwt-token` 的 scope 与有效期。
 
 **复算入口**：见证据卡 §10 的只读命令清单。
