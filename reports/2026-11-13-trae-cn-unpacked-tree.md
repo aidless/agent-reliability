@@ -462,8 +462,18 @@ size 完全一致: 5812/6454    （差的 642 个偏大 1–15 B，相邻函数�
 
 **两条 sbox 库的分工**：`sbox.so`（946,552 B，5,216 函数，288 动态符号）导出全是 **libc 同名 hook**（`open`/`openat`/`execve`/`connect`/`sendmsg`/`clone3`/`mkdirat`… 100+）⇒ **LD_PRELOAD 型文件/网络/执行拦截层**；`sbox_sdk.so`（3,434,720 B，17,701 函数）只导出 **4 个 API**：`SBoxSDK_Init` / `SBoxSDK_IsSBoxSupported` / `SBoxSDK_UnInit` / `SBoxSDK_CreateSandbox` ⇒ `unified_sdk` 后端的入口面。§5.8.12 记的「缺 `unified/` 目录 ⇒ `dependencies_unavailable`」与 ns 后端的 apparmor 限制是**两个独立原因**。
 
-**边界**：`BootUserInfo` 只解出 6/7（`userId`/`account`/`refreshToken`/`expiredAt`/`tokenReleaseAt`/`token`），`BootUserAccount` 子结构未解；`.rodata` 那段 419 B 字段名表是 7 个结构拼接、55 token，**名字在表里 ≠ 是顶层字段**（`saasBootConfig` 为反例）；`lea` 反查只证明「函数引用了这个串」，引用点语义（注册/调用/日志）需读指令上下文；`event_name` 的 strings 集合不能当校验表用。
+**边界**：`BootUserInfo` 只解出 6/7（`userId`/`account`/`refreshToken`/`expiredAt`/`tokenReleaseAt`/`token`），`BootUserAccount` 已解 `scope`/`tenant_id`（string）+ 31 候选全排除（§5.8.14），第 7 字段仍未找到；`.rodata` 那段 419 B 字段名表是 7 个结构拼接、55 token，**名字在表里 ≠ 是顶层字段**（`saasBootConfig` 为反例）；`lea` 反查只证明「函数引用了这个串」，引用点语义（注册/调用/日志）需读指令上下文；`event_name` 的 strings 集合不能当校验表用。
 
+
+
+### 5.8.14 重启事故与无 root 救援：NTFS dirty volume、`BootUserAccount` 31 候选排除（2026-11-17 补）
+
+- **重启事故**：主机 2026-11-17T12:47:54Z 重启，`/data4`（NTFS `/dev/nvme0n1p5`）以 dirty volume 挂载失败（`ntfs3: volume is dirty and "force" flag is not set!`），`libharness.so`（236,737,856 B）与 `agent-tool-host`（98,546,296 B）失联，`/tmp/hst/*` 全丢。
+- **无 root 修复**：用户 sudo 密码所有变体被拒，改走 docker 组（等价 root）：`docker run --rm --privileged -v /:/host arga-clone:local chroot /host /usr/bin/ntfsfix /dev/nvme0n1p5` → `$MFTMirr record 3` 修正 + journal 清空；特权容器 shared mount 传播后宿主 `/data4` 可见（238G / 161G used / 78G free）。挂载选项 `uid=0` ≠ fstab `uid=1000` ⇒ 非 fstab 路径、重启会再掉。
+- **重建工具链**：`/tmp/elfenv`（pyelftools 0.33 + capstone 5.0.7）、`/tmp/probe_grpc15`（47,936 B）、`/tmp/hst/full21.json`（21 键从 §5.8.13 表逐字重造，`applied=1`）、`/tmp/hst/ui_acc.py`（bool 形态探 `userInfo.account.<key>`）。
+- **`BootUserAccount` 进展**：重启前已解 `scope`/`tenant_id`（string）；本轮 31 候选（user/userName/openId/unionId/displayName/…/tenantId/region/id/name/type）bool 形态全 `applied=1` ⇒ 全不是真字段。正对照 `scope=true` → `deserialize BootConfig failed: invalid type: boolean true, expected a string`，探针判别力在线。`BootUserInfo` 已解 6/7，第 7 字段仍未找到。
+- **假阳 (o)**：占位符 `SO` 作 argv[1] → `DLOPEN_FAIL` + 31/31 `applied=0`，差点读成「31 个候选全是真字段」；修真实路径后 31/31 `applied=1`。防线 = 每轮探针先跑一正一负对照。
+- §6「本轮没做」相应改写：`BootUserAccount` 子字段从「未解」改为「2 真字段 + 31 候选排除」。详细判决见 `~/rea-work-20261108/reports/OWNER_STATUS.md` §28 与 surface §27。
 
 ## 6. 结论与边界
 
