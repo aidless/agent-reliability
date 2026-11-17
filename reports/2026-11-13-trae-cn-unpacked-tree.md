@@ -353,10 +353,70 @@ DATA 00 00000028 | 0a1c "icube.common.commands.health" | 1204 "null" | 1a00 | 22
 
 修完后 `toolhost_sync` WARN、`ERROR`、`scope is unavailable`、`receive failed` 四项在两轮 32 s 里**全为 0**。`Catalog loaded product="trae" target_os="linux" global_skill_count=7 product_skill_count=16` ⇒ 内建技能来自 `~/.trae-cn/builtin_skills`，与扩展层无关。
 
+### 5.8.12 `agent-tool-host` 独立跑通：命令执行层真的落地（2026-11-17 补）
+
+前十一节全部以 `libharness.so`（Electron 主进程里的 harness）为主体。本节换主体：**`resources/app/modules/ai-agent/bin/agent-tool-host` 能被单独拉起，并在非 root 的普通 Linux 上真的执行 shell 命令。**
+
+二进制身份先立住：`agent-tool-host` **98,546,296 B / ELF PIE / stripped**，`ctx-cli` 2,989,008 B。stripped 是硬约束 —— 它没给函数名，只给 **351 条 `toolhost/**/*.rs` 源码路径**（Rust `file!()` 常量）与 **321 个动态符号**，所以本节结论全部走**运行时可观测**。
+
+启动：三次失败才成。
+
+| # | 形态 | 结果 | 根因 |
+|---|---|---|---|
+| 1 | 裸跑 + `TOOLHOST_TRANSPORT=grpc TOOLHOST_PORT=19400` | 12 s 被 timeout 杀，stdout 全空 | `[compress-logger] failed to read TOOLHOST_LOG_DIR, using compact stdout fallback` |
+| 2 | 加 `TOOLHOST_LOG_DIR` | log 目录 0 文件，进程消失 | 根因未现 |
+| 3 | `setsid nohup` 不带 LOG_DIR | `ERROR server: async_main failed error=ICUBE_APP_ROOT is required for local Toolhost` | **`ICUBE_APP_ROOT` 是硬前置** |
+| 4 | 补 `ICUBE_APP_ROOT` + 两个 DATA_DIR | `监听地址: 127.0.0.1:19400`，`ss -ltn` 确认 | 成功 |
+
+**第 1 次是本节最该记住的一处**：stdout 空、进程活了 12 秒，看起来像「正常」，实际是一次 `async_main failed` 被 `timeout` 收尸。这与 §5.8.11 的假阳同型 —— 缺席不是证据。
+
+四个端口 = 四个服务面：**19400** volo/thrift（宿主↔toolhost 主通道）、**9000** gRPC `CommandService`、**9003** MCP JSON HTTP（`concurrency=4 timeout_ms=30000`）、**9001** SPK（`auth mode Off`）。绑 80 的 preview proxy 报 `Permission denied (os error 13)`，非 root，**不影响 CommandService**。
+
+gRPC 客户端两个坑：
+
+1. `Channel` 没有 `stream_unary_unary`，一元就是 `unary_unary`。
+2. **grpcio 自己加 5 字节 gRPC 帧头**；自己再 `frame()` 一层 → `failed to decode Protobuf message: invalid tag value: 0`。必须传裸 protobuf 体。
+
+`ExecuteCommandRequest` 四字段：`1` 命令名（全名匹配）、`2` 参数 JSON 字符串（无参给 `"{}"`，`"null"` 会 `invalid type: null, expected struct`）、`3` 空、`4` **session owner**（空 → `session owner is required`）。
+
+六条命令真调通：
+
+| 命令 | 参数 | 结果 |
+|---|---|---|
+| `icube.common.commands.health` | — | 16 B：`0a04226f6b221200180022002a003000` → `result="\"ok\""`、其余五字段全空 |
+| `…tooling.listFolder` | `{"path":"/tmp"}` | 17,024 B，真实 `/tmp` 列表 |
+| `…tooling.commandExecution.getEnvironment` | `{}` | `{"os":"linux","shell":{"kind":"bash","path":"/bin/bash"}}` |
+| `…tooling.commandExecution.getSandboxAvailability` | `{}` | 未设 CLI → `cli_not_found`；设了 → `dependencies_unavailable` |
+| `…tooling.commandExecution.start` | 见下 | host 目标真跑 shell |
+| `…tooling.getEnvironment`（**无** `commandExecution` 前缀） | `{}` | `{"errorCode":"TOOL_UNRESOLVED"}`、`code=1` |
+
+那 16 字节把 §5.8.11 用 wire-type 错法推出的六字段布局**当场验证了一遍** —— 两个完全独立的来源（报错文本 / 线上字节）结论一致。
+
+`start` 的 schema 顺序敏感：`command`(enum `shell{script}`/`argv{program,args}`)、`requestId`、`target`(enum `host`/`sandbox`)、`waitTimeoutMs`、`outputLimitBytes`（**给 0 报 `invalid output limit`**，`1048576` 通过）、sandbox 时 `config`。host 成功回 `"status":"exited"`、`"output":"hi-from-shell\nuid=1000(liuzewen) …"`、`nextOutputOffset:196`、`logPath=/tmp/th2/mod/ai-agent/command-execution/<eid>/output.log` ⇒ **真执行，不是模拟**。
+
+`stop` → `status:"stopped"`、`terminalReason:"user_stop"`；同 `requestId` 换参 → `idempotency_conflict`。
+
+sandbox 目标：`config` 必填，`networkDefault` **枚举只接受 `allow`/`deny`**、`trace` 是 boolean。一律回 `{"status":"failed","terminalReason":"sandbox_unavailable"}`，日志 `sandbox backend selected for execution requested=LegacyCli selected="legacy_cli"` + `error=SandboxUnavailable` ⇒ **schema 层通，卡在后端可用性**。
+
+归因到 root：
+
+```
+bwrap --die-with-parent --ro-bind / / --dev /dev --chdir … -- /bin/bash -c …
+$ bwrap: setting up uid map: Permission denied
+/proc/sys/kernel/apparmor_restrict_unprivileged_userns = 1
+$ sudo -n true  →  sudo: a password is required
+```
+
+`trae-sandbox` 自带自愈代码（`sandbox::linux::kernel::enable_unprivilege_user_namespace` + strings 里的 `/etc/sysctl.d/trae-sandbox.conf`、`kernel.apparmor_restrict_unprivileged_userns=0`），但写 sysctl 要 root，`install-dependency` 因此报 `Permission denied (os error 13)`。**执行层在本机的唯一阻塞是权限，不是代码、schema 或缺库。**
+
+`trae-sandbox` 符号面：`nm -C --defined-only | wc -l` = **9,750**（`with debug_info, not stripped`）。模块：`sandbox::linux::ns` 68、`linux::utils` 16、`linux::kernel` 13、`ffi::types` 13、`ffi_sandbox::crash_handler` 13、`trae_sandbox::recycle_result` 12、`trae_sandbox::main` 8。**第三套后端确实存在**：strings 里有 `<sandbox::linux::apparmor::{impl#3}::{init,exec,uninit,environment_check,install_dependency} …>::{vtable}`、`ApparmorProfileTemplateParams`、`AppArmorMode`、`check_apparmor_denied`，但 **`nm` 里 0 命中**（vtable 在 `.rodata`，符号被 strip）。特权走密码：`run_cmd_with_passwd<Cow<str>>` + strings 的 `Root password`、`_privilege_password`。
+
+边界：`listFolder` 能读 `/tmp` 不等于能读任意路径（`TOOLHOST_EXTRA_ALLOWED_PATHS`/`CFS_*` 未逐一试）；**host 目标 = 无沙箱**（真实 `uid=1000`、cwd 就是会话目录）；`outputLimitBytes` 的实际截断语义未测；`mime_type`/`binary`/`binary_size` 三字段本轮零使用。
+
 ## 6. 结论与边界
 
 **可用于能力审计的三条**：(a) 端点矩阵是「设计上的全集」，不等于运行时实际访问；(b) 「agent 能做什么」应以 §3 的命令清单为底物，不要以宣传页为底物；(c) 沙箱口径受限于 bwrap 的能力范围。
 
-**本轮没做**：`BuiltinSkillCapabilities` 的第三个可选字段（只验证了两个）；`instance_id` 的取值域与格式校验；协议 `1`/`4` 的静默态成因（「不在候选集」还是「协商后被吞」）；`schema_version=2` 与协议号 `2` 是否同一常量；`SandboxTraceEvent` 的 `sandbox_impl_type` 枚举取值与 `event_name` 字面量集合；`categories`/`metrics` 为 packed repeated 只有一条依据（无正面对照）；推事件触发 `RST_STREAM` 的下层原因；真 Electron 宿主下 `aha-rpc` 内部填表未观测；运行时流量（无观测）；`.so` 的函数级逻辑（§5.5/§5.6/§5.7 已补 crate 边界、接口命名、IPC 协议形状与 **`BP_GetInterface` 的 ABI + 接口表前三项（三个 IPC 回调）**；`ai_agent_ipc_recv` 的**帧结构**已拿到前 40 条（§5.8.4，JSON-RPC 两个方法 + HTTP/2 前导），**HTTP/2 unary 应答已实现并验证**（§5.8.9，`gRPC response frame too short` 修掉后整轮 `ERROR` = 0），`SubscribeExecutionEvents` 的**服务端流已做**（§5.8.10：开流有效，且原 A/B 结论被底物推翻）；`DynamicConfigService` 已答（`authoritative remote config is ready`）；`agent-tool-host` 已到「517 条源码路径 + 34 个 `TOOLHOST_*` 变量」层，`trae-sandbox` 已到「NamespaceSandbox trait + bwrap 命令行逐字 + 无 seccomp」层，均无函数级细节；108 个扩展的 `dist/` 已做 sink 普查（`child_process` 74 文件 / `eval` 7 文件 / `shell.openExternal` 0，并逐条定性了 Emscripten 与 computer-use 两类）；遥测事件名抽取仍空；`~/.icube` 仍未定位；`trae-jwt-token` 已解为 **RS256 标准 JWT、无 scope 字段、7 天整、签名 512 B**。
+**本轮没做**：trace 事件的 scope 注册（需 harness 自己发起一次 sandbox 执行，而本机必然 `sandbox_unavailable`）；`agent-tool-host` 的函数级逻辑（stripped，仅 321 动态符号 + 351 条源码路径）；`trae-sandbox` 的 `linux::apparmor` 后端函数级（vtable 串在 `.rodata`、符号已 strip）；`listFolder` 的路径越界边界（`TOOLHOST_EXTRA_ALLOWED_PATHS` 未逐一试）；`outputLimitBytes` 的截断行为；`CommandResponse` 的 `mime_type`/`binary`/`binary_size` 三个字段本轮零使用；`BuiltinSkillCapabilities` 的第三个可选字段（只验证了两个）；`instance_id` 的取值域与格式校验；协议 `1`/`4` 的静默态成因（「不在候选集」还是「协商后被吞」）；`schema_version=2` 与协议号 `2` 是否同一常量；`SandboxTraceEvent` 的 `sandbox_impl_type` 枚举取值与 `event_name` 字面量集合；`categories`/`metrics` 为 packed repeated 只有一条依据（无正面对照）；推事件触发 `RST_STREAM` 的下层原因；真 Electron 宿主下 `aha-rpc` 内部填表未观测；运行时流量（无观测）；`.so` 的函数级逻辑（§5.5/§5.6/§5.7 已补 crate 边界、接口命名、IPC 协议形状与 **`BP_GetInterface` 的 ABI + 接口表前三项（三个 IPC 回调）**；`ai_agent_ipc_recv` 的**帧结构**已拿到前 40 条（§5.8.4，JSON-RPC 两个方法 + HTTP/2 前导），**HTTP/2 unary 应答已实现并验证**（§5.8.9，`gRPC response frame too short` 修掉后整轮 `ERROR` = 0），`SubscribeExecutionEvents` 的**服务端流已做**（§5.8.10：开流有效，且原 A/B 结论被底物推翻）；`DynamicConfigService` 已答（`authoritative remote config is ready`）；`agent-tool-host` **已独立跑起来**（§5.8.12：19400/9000/9003/9001 四端口、`Execute` 六条命令真调通、host 目标真跑 shell 拿到 `uid=1000(liuzewen)`、`commandExecution.start/poll/stop` 全链路 + 幂等 + owner），源码路径 517 条、`TOOLHOST_*` 变量全表，`trae-sandbox` 已到「**9,750 符号** + NamespaceSandbox trait + bwrap 命令行逐字 + 无 seccomp + apparmor 后端存在（vtable 在 `.rodata`）」层，且执行层在本机的阻塞已精确归因到 `apparmor_restrict_unprivileged_userns=1` + 无 root，均无函数级细节；108 个扩展的 `dist/` 已做 sink 普查（`child_process` 74 文件 / `eval` 7 文件 / `shell.openExternal` 0，并逐条定性了 Emscripten 与 computer-use 两类）；遥测事件名抽取仍空；`~/.icube` 仍未定位；`trae-jwt-token` 已解为 **RS256 标准 JWT、无 scope 字段、7 天整、签名 512 B**。
 
 **复算入口**：见证据卡 §10 的只读命令清单。
