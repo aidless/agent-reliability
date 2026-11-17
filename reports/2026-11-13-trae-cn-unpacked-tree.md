@@ -338,10 +338,25 @@ DATA 00 00000028 | 0a1c "icube.common.commands.health" | 1204 "null" | 1a00 | 22
 
 `Execute` 的应答下一层：`{"capabilities":[]}` 消掉了 `invalid builtin Skill capabilities: EOF while parsing a value`，冒出 `decode CommandResponse failed: failed to decode Protobuf message: buffer underflow` ⇒ **应答必须是 protobuf，JSON 不行**（未解）。
 
+### 5.8.11 `CommandResponse` 已解：`BuiltinSkillCapabilities` 是协议协商信封（2026-11-16 补）
+
+§5.8.10 末段那个「未解」关掉了。结论：**`CommandResponse.result`（field 1，LengthDelimited）装的是 `BuiltinSkillCapabilities` 的 JSON 文本**；字段表用 wire-type 错法拿到 —— `1=result`、`2=binary`、`4=error_message`、`5=mime_type`（3 与 6 不存在）。
+
+两层解析要分开看：
+
+| 层 | 报错 | 修法 |
+|---|---|---|
+| 外层 protobuf | `decode CommandResponse failed: … buffer underflow` | `result` 里放任意 JSON 即可（`printf '\x0a\x14{"capabilities":[]}'` 就消掉） |
+| 里层 JSON | `invalid builtin Skill capabilities: missing field \`builtin_skill_protocols\`` | 补齐 `BuiltinSkillCapabilities`（`with 2 elements`） |
+
+`BuiltinSkillCapabilities` 实测：`builtin_skill_protocols` 是 **u32 数组**（给字符串报 `expected u32`），`instance_id` 是字符串。**只有协议 `2` 被这套构建接受**：`[1]`/`[4]` 静默（既不 ready 也不报错），`[3]` 报 `no common builtin Skill protocol or missing instance identity`，`[2]` 打出 `sending negotiated Catalog sync … schema_version=2 storage_scope="baseline"`。
+
+修完后 `toolhost_sync` WARN、`ERROR`、`scope is unavailable`、`receive failed` 四项在两轮 32 s 里**全为 0**。`Catalog loaded product="trae" target_os="linux" global_skill_count=7 product_skill_count=16` ⇒ 内建技能来自 `~/.trae-cn/builtin_skills`，与扩展层无关。
+
 ## 6. 结论与边界
 
 **可用于能力审计的三条**：(a) 端点矩阵是「设计上的全集」，不等于运行时实际访问；(b) 「agent 能做什么」应以 §3 的命令清单为底物，不要以宣传页为底物；(c) 沙箱口径受限于 bwrap 的能力范围。
 
-**本轮没做**：`CommandResponse` 的 protobuf 结构（应答必须是 proto 而非 JSON，`buffer underflow` 仍在）；`SandboxTraceEvent` 的 `sandbox_impl_type` 枚举取值与 `event_name` 字面量集合；`categories`/`metrics` 为 packed repeated 只有一条依据（无正面对照）；推事件触发 `RST_STREAM` 的下层原因；真 Electron 宿主下 `aha-rpc` 内部填表未观测；运行时流量（无观测）；`.so` 的函数级逻辑（§5.5/§5.6/§5.7 已补 crate 边界、接口命名、IPC 协议形状与 **`BP_GetInterface` 的 ABI + 接口表前三项（三个 IPC 回调）**；`ai_agent_ipc_recv` 的**帧结构**已拿到前 40 条（§5.8.4，JSON-RPC 两个方法 + HTTP/2 前导），**HTTP/2 unary 应答已实现并验证**（§5.8.9，`gRPC response frame too short` 修掉后整轮 `ERROR` = 0），`SubscribeExecutionEvents` 的**服务端流已做**（§5.8.10：开流有效，且原 A/B 结论被底物推翻）；`DynamicConfigService` 已答（`authoritative remote config is ready`）；`agent-tool-host` 已到「517 条源码路径 + 34 个 `TOOLHOST_*` 变量」层，`trae-sandbox` 已到「NamespaceSandbox trait + bwrap 命令行逐字 + 无 seccomp」层，均无函数级细节；108 个扩展的 `dist/` 已做 sink 普查（`child_process` 74 文件 / `eval` 7 文件 / `shell.openExternal` 0，并逐条定性了 Emscripten 与 computer-use 两类）；遥测事件名抽取仍空；`~/.icube` 仍未定位；`trae-jwt-token` 已解为 **RS256 标准 JWT、无 scope 字段、7 天整、签名 512 B**。
+**本轮没做**：`BuiltinSkillCapabilities` 的第三个可选字段（只验证了两个）；`instance_id` 的取值域与格式校验；协议 `1`/`4` 的静默态成因（「不在候选集」还是「协商后被吞」）；`schema_version=2` 与协议号 `2` 是否同一常量；`SandboxTraceEvent` 的 `sandbox_impl_type` 枚举取值与 `event_name` 字面量集合；`categories`/`metrics` 为 packed repeated 只有一条依据（无正面对照）；推事件触发 `RST_STREAM` 的下层原因；真 Electron 宿主下 `aha-rpc` 内部填表未观测；运行时流量（无观测）；`.so` 的函数级逻辑（§5.5/§5.6/§5.7 已补 crate 边界、接口命名、IPC 协议形状与 **`BP_GetInterface` 的 ABI + 接口表前三项（三个 IPC 回调）**；`ai_agent_ipc_recv` 的**帧结构**已拿到前 40 条（§5.8.4，JSON-RPC 两个方法 + HTTP/2 前导），**HTTP/2 unary 应答已实现并验证**（§5.8.9，`gRPC response frame too short` 修掉后整轮 `ERROR` = 0），`SubscribeExecutionEvents` 的**服务端流已做**（§5.8.10：开流有效，且原 A/B 结论被底物推翻）；`DynamicConfigService` 已答（`authoritative remote config is ready`）；`agent-tool-host` 已到「517 条源码路径 + 34 个 `TOOLHOST_*` 变量」层，`trae-sandbox` 已到「NamespaceSandbox trait + bwrap 命令行逐字 + 无 seccomp」层，均无函数级细节；108 个扩展的 `dist/` 已做 sink 普查（`child_process` 74 文件 / `eval` 7 文件 / `shell.openExternal` 0，并逐条定性了 Emscripten 与 computer-use 两类）；遥测事件名抽取仍空；`~/.icube` 仍未定位；`trae-jwt-token` 已解为 **RS256 标准 JWT、无 scope 字段、7 天整、签名 512 B**。
 
 **复算入口**：见证据卡 §10 的只读命令清单。
