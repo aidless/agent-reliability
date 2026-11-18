@@ -715,3 +715,23 @@ exec 链：shim `0x10360d` → `0x1036a5` → `get_profile_path`+`read_to_string
 **Execute 真转发闭环**：probe 收到 Execute 时把 gRPC payload 经文件握手交给 grpcio 转发器，发真 toolhost:9000，写真 `CommandResponse` 回传。两轮实测：`health`→16B（`result="ok"`）、`builtinSkillCapabilities`→136B，harness 报 `Toolhost process is ready response="ok"`。完整启动链全绿（Catalog loaded 7+16 skills + dynamic config ready + GoalLoop enabled + 67 modules/31 tools）。
 
 **边界**：(1) 只验证了 harness 启动时两条自发 Execute，任意工具调用路径未触发但转发机制通用；(2) cb 参数不能盲解引用（b 是 sentinel）；(3) cmd.json 须合法 `CommandResponse` protobuf。
+
+### 5.8.25 六项收口：工具调用真执行 + 四处收敛性查不到（2026-11-18）
+
+**① 工具调用真执行**（经 fwd 转发通道等价注入，非 harness agent loop 自主决策）：toolhost 在 `/tmp/th4`，owner=`host-tool-probe`。`tooling.listFolder {"path":"/etc"}` → code=0 真列 /etc；`commandExecution.start` shell `echo TOOLCALL_OK; id -u; pwd` → `output="TOOLCALL_OK\n1000\n/tmp/th4\n"`、exitCode=0、eid `abe5d40a56cade56729c27ccabee5a71`；`poll` 一致。漏 `waitTimeoutMs` 报 `missing field`，补齐通过。
+
+**② 9003 extensionId/params 查不到**：`canonical extensionId` 4 处串 + 32 条 `[mcp-http-debug]` 日志串（源码 `mcp_http/service.rs:285`）；8 头名 + 4 协议版本 + 5 params 变体全 `-32602`，唯 `x-extension` 得 200 但仅 `unknown method` ⇒ 错误在 params 解析阶段，注入位置/params schema 查不到。
+
+**③ 9001 body schema 查不到**：`struct ConfigureRequest with 2 elements`@`0x1e4afec`，10 种 body 全返回同一句 `{"error":"invalid configuration request"}` ⇒ 统一吞错、响应无区分度。
+
+**④ 19400 volo 方法名查不到**：377 个 gRPC-style path 全是内嵌技能资源噪声（widget/license/DTD URL）；`FireHook` 9 处、`PublishExecutionEvents` 0 处。
+
+**⑤ preview AalG 日志查不到**：日志头 `AalG\0\0\0\0Atab` + `unknown_version`，二进制无解码器；开关键只有 `RUST_LOG`/`TOOLHOST_LOG`/`LOG_LEVEL`。
+
+**⑥ 无 FDE 区函数起点查不到**（§36.5 复核）：5 站点 padding 候选全 mid-instruction，终点收敛 `0xc5570c2` 跨函数失步。
+
+**口径收获第二十五条**：「试遍都失败」分两种——② 的错误随输入变化（有区分度，是「还没猜对」），③ 的错误恒定（无区分度，是服务端吞错）。恒定错误体是信息黑洞，不是待解的锁。
+
+**新假阳类型 (z)**：HTTP 状态码变绿 ≠ 参数被接受。`x-extension` 得 200 但 body 是 `-32601 unknown method`；判「接受」必须找只在成功路径出现的串（`MCP operation admitted`）。
+
+**边界**：②③④⑤⑥ 全为收敛性查不到（2 实验用尽 / 无区分度 / 无解码器 / strings 只有噪声），不是「没做」，不再列活跃目标；① 是等价注入验证，不等于 harness agent loop 自主发起工具调用（后者需真 LLM 后端）。
