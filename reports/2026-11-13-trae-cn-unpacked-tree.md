@@ -628,8 +628,32 @@ GOT 槽全为 `R_X86_64_RELATIVE`（type 8）：`0xe15c8c0`→addend `0x5950d70`
 
 配套导出：`get_browser_iface`/`create_browser_client`/`create_browser_server`/`create_ffi_client_handle`/`create_ffi_server_handle`/`create_send_callback`/`create_close_callback`/`create_shutdown_callback`/`create_client_send_callback`/`create_client_disconnect_callback`/`register_server_state`/`register_client_socket`/`bp_on_connected`/`bp_on_message`/`bp_on_disconnected`/`bp_client_on_message`/`start_message_receiver_thread`。⇒ 宿主 `trae-cn` 经 FFI 把函数表交给 `libai_agent.so`，`get_browser_iface` 拿到表后 `CLIENT_CONNECTIONS`/`SERVERS` 才可用；自建宿主 `probe_grpc*.c` 直接 `dlsym` 拿表头手填 `[0]`，绕过了这一层 —— 这解释了「`CLIENT[0]` 是发送槽只在自建宿主视图成立」。
 
-`libai_agent.so` 的 `.text=[0x6ca2000,0x85150dc)` 内对上述串做字节模式扫描 **命中 0** ⇒ 这些串不是 `lea` 直接取，而是经 `get_browser_iface` 的字符串比较表间接引用；静态追到 `strcmp` 调用点本轮未做。
+~~`libai_agent.so` 的 `.text=[0x6ca2000,0x85150dc)` 内对上述串做字节模式扫描 **命中 0** ⇒ 这些串不是 `lea` 直接取，而是经 `get_browser_iface` 的字符串比较表间接引用；静态追到 `strcmp` 调用点本轮未做。~~ **假阴性，§5.8.22 已推翻**（且该 `.text` 上界写错，应为 `0xf1b70dc`）。
 
 **边界五条**：(1) 跳表项宽度要按 owner 的 `movsxd rax, dword ptr [rcx+rax*4]` 反推（`*4` = 4 字节），按 8 字节读会得到 `0x065906360659053a` 这种「看起来像地址」的 ASCII 值；(2) 相对偏移必须先校准一条（基址 + entry 与首 arm 逐字节对齐）才算定界成功；(3) `Drop` glue 的识别特征是「arm 只碰指针 + 有 no-op 返回 + 多索引共用」，不是「跳表 + 32 项」；(4) `mime_type` 不能从扩展名推（本实现零嗅探）；(5) 「表不存在」与「表在别的层」要分开——JS 层零命中不等于没有这张表。
 
-**本轮没做**：`strcmp` 调用点定位（`BB_IPC_*` 串的静态引用链）；`SubscribeExecutionEvents` 的 scope 注册（权限边界，不追）；两个二进制的全量函数级还原。
+~~**本轮没做**：`strcmp` 调用点定位（`BB_IPC_*` 串的静态引用链）；`SubscribeExecutionEvents` 的 scope 注册（权限边界，不追）；两个二进制的全量函数级还原。~~ **三项已于 §5.8.22 全部做完**。
+
+### 5.8.22 三项收口（2026-11-17）
+~~`libai_agent.so` 的 `.text` 内对上述串做字节模式扫描命中 0~~ **此句为假阴性，已被本节推翻**（见 §36）：
+旧 key 带 `b'\x00'`，而 `.rodata` 中串连续拼接无 NUL；去掉后命中 5 站点
+`0xc4f3402/0xc4f4325/0xc4f4418/0xc4fab98/0xc4fd712`。
+
+**填表链**：`get_browser_iface` 按 17/27/27/17/27/27/20 字节顺序比较
+`BP_IPC_{SERVER,SERVER_INTERFACE,SERVER_INTERFACE_1_0,CLIENT,CLIENT_INTERFACE,CLIENT_INTERFACE_1_0}` 与
+`BP_AHANET_CLIENT;1.0`，比较器 `0xc500062`；命中后经 `0xf9e38b8` → `0xf47ef28` →
+`call [0xf940488]`(`0xc8924d8`) → `call [rdx+0x18]` 取接口。
+`create_browser_server/client` 经 `.got 0xf9677b8/0xf9677c0`（文件初值 0，运行时由宿主写入）取
+`BB_IPC_SERVER/CLIENT;1.0` 表，失败串分别长 44。
+
+**scope warn 定量**：六 `lea` 站点，两个 scope 站点同属 `0x7c6d500` 状态机；
+三关 = 计数阈值（`<={3}` / `>1`）+ 状态字节（∈{1,2,3}，表 `0xe191600`，步长 `0x18`）+ 谓词（`0xda2fbb0` 比 2 /
+`0xda733c0` 比全局 `0xe1f47a0==2`）。活体 A/B：pushes 2/6/12 → warn 2/3/4 条，`count=` 序列
+1,2 / 1,2,4 / 1,2,4,8 ⇒ **指数节流**；已从「权限边界不追」改为「已定量」。
+
+**全量函数映射**：`agent-tool-host` 87,855 refs / 24,693 函数 / 26,578 唯一串；
+`trae-sandbox` 2,267 refs / 868 函数 / 1,243 唯一串；TSV 落
+`evidence/2026-11-17-function-string-map/`。
+
+**边界**：`.rodata` 可读字节可能含相邻串，站点/函数归属有效、串边界无效；
+`call [rip+disp32]` 是 6 字节；限流日志的条数不能当事件总数。
