@@ -703,3 +703,15 @@ exec 链：shim `0x10360d` → `0x1036a5` → `get_profile_path`+`read_to_string
 **边界六条**：(1) 端口在监听 ≠ 协议面可用；(2) 端口协议名不能凭产品文档猜（9001/19400 都对 h2 preface 有反应但都不是 gRPC）；(3) 数值状态能还原语义，变体名要有符号或字符串证据；(4) 「writer 只写 {0,1,2}」不等于「3 不存在」（3 是 gate 侧 sentinel，两侧语义不必对称）；(5) 默认 vtable 的 `this` 指向 `.rodata` panic 串 ⇒ 哑占位，调用不崩也不做事；(6) 无 FDE 区的函数起点不能用「向前找 padding」恢复。
 
 **本轮没做**：9001 完整必填字段与 body schema；9003 的 canonical extensionId 注入位置与 params schema（4 种候选头名全无效）；19400 合法 volo 方法名；preview_proxy AalG 日志明文行；无 FDE 区 5 个 `lea` 站点的函数起点/长度。
+
+### 5.8.24 完整宿主替身闭环（2026-11-18）
+
+把 §5.8.23 解出的双表槽位用于升级 `probe_grpc15`，harness 从 BootConfig → Catalog sync → Execute → 真 toolhost 转发全链路跑通。证据在 `rea-work/evidence/2026-11-18-host-replacement/`。
+
+**cb 查询 3 个接口名**：`BB_IPC_SERVER;1.0`、`BB_IPC_CLIENT;1.0`、`BB_AHANET_SERVER;1.0`。第三个原 probe 未答（回落错误表）——cb 用 `BB_`+AHANET_**SERVER**，`BP_GetInterface` 用 `BP_`+AHANET_**CLIENT**，前缀与角色都不同。cb 的 b 参数是 `0x8000000000000000` sentinel，长度在 c/d。
+
+**双表复核**：`CLI=so+0xe125ae0`、`SRV=+8`（`SERVER[k]==CLIENT[k+1]`）、`AHN=so+0xe129ff0` 独立。
+
+**Execute 真转发闭环**：probe 收到 Execute 时把 gRPC payload 经文件握手交给 grpcio 转发器，发真 toolhost:9000，写真 `CommandResponse` 回传。两轮实测：`health`→16B（`result="ok"`）、`builtinSkillCapabilities`→136B，harness 报 `Toolhost process is ready response="ok"`。完整启动链全绿（Catalog loaded 7+16 skills + dynamic config ready + GoalLoop enabled + 67 modules/31 tools）。
+
+**边界**：(1) 只验证了 harness 启动时两条自发 Execute，任意工具调用路径未触发但转发机制通用；(2) cb 参数不能盲解引用（b 是 sentinel）；(3) cmd.json 须合法 `CommandResponse` protobuf。
