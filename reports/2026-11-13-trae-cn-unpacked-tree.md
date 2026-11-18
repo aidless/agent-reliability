@@ -471,17 +471,9 @@ size 完全一致: 5812/6454    （差的 642 个偏大 1–15 B，相邻函数�
 - **重启事故**：主机 2026-11-17T12:47:54Z 重启，`/data4`（NTFS `/dev/nvme0n1p5`）以 dirty volume 挂载失败（`ntfs3: volume is dirty and "force" flag is not set!`），`libharness.so`（236,737,856 B）与 `agent-tool-host`（98,546,296 B）失联，`/tmp/hst/*` 全丢。
 - **无 root 修复**：用户 sudo 密码所有变体被拒，改走 docker 组（等价 root）：`docker run --rm --privileged -v /:/host arga-clone:local chroot /host /usr/bin/ntfsfix /dev/nvme0n1p5` → `$MFTMirr record 3` 修正 + journal 清空；特权容器 shared mount 传播后宿主 `/data4` 可见（238G / 161G used / 78G free）。挂载选项 `uid=0` ≠ fstab `uid=1000` ⇒ 非 fstab 路径、重启会再掉。
 - **重建工具链**：`/tmp/elfenv`（pyelftools 0.33 + capstone 5.0.7）、`/tmp/probe_grpc15`（47,936 B）、`/tmp/hst/full21.json`（21 键从 §5.8.13 表逐字重造，`applied=1`）、`/tmp/hst/ui_acc.py`（bool 形态探 `userInfo.account.<key>`）。
-- **`BootUserAccount` 进展**：重启前已解 `scope`/`tenant_id`（string）；本轮 31 候选（user/userName/openId/unionId/displayName/…/tenantId/region/id/name/type）bool 形态全 `applied=1` ⇒ 全不是真字段。正对照 `scope=true` → `deserialize BootConfig failed: invalid type: boolean true, expected a string`，探针判别力在线。`BootUserInfo` 已解 6/7，第 7 字段仍未找到。
+- **`BootUserAccount` 进展**：重启前已解 `scope`/`tenant_id`（string）；本轮 31 候选（user/userName/openId/unionId/displayName/…/tenantId/region/id/name/type）bool 形态全 `applied=1` ⇒ 全不是真字段。正对照 `scope=true` → `deserialize BootConfig failed: invalid type: boolean true, expected a string`，探针判别力在线。`BootUserInfo` 已解 6/7 且已证第 7 字段用现有探针原理上探不到（§5.8.16），第 7 字段仍未找到。
 - **假阳 (o)**：占位符 `SO` 作 argv[1] → `DLOPEN_FAIL` + 31/31 `applied=0`，差点读成「31 个候选全是真字段」；修真实路径后 31/31 `applied=1`。防线 = 每轮探针先跑一正一负对照。
 - §6「本轮没做」相应改写：`BootUserAccount` 子字段从「未解」改为「2 真字段 + 31 候选排除」。详细判决见 `~/rea-work-20261108/reports/OWNER_STATUS.md` §28 与 surface §27。
-
-## 6. 结论与边界
-
-**可用于能力审计的三条**：(a) 端点矩阵是「设计上的全集」，不等于运行时实际访问；(b) 「agent 能做什么」应以 §3 的命令清单为底物，不要以宣传页为底物；(c) 沙箱口径受限于 bwrap 的能力范围。
-
-**本轮没做**：trace 事件的 scope 注册（需 harness 自己发起一次 sandbox 执行，而本机必然 `sandbox_unavailable`，且 sysctl 自愈要 root）——**这是权限边界不是研究问题**；`agent-tool-host` 的函数级逻辑**已做**（§5.8.13：`.eh_frame_hdr` 二分表给 92,899 个函数起点，`trae-sandbox` symtab 6,454/6,454 = 100% 真值校验，26 个函数的字符串归属已落表），剩 `lea` 引用点语义未读；`trae-sandbox` 的 `linux::apparmor` 后端函数级（vtable 串在 `.rodata`、符号已 strip）；`listFolder` 的路径越界边界（`TOOLHOST_EXTRA_ALLOWED_PATHS` 未逐一试）；`outputLimitBytes` 的截断行为；`CommandResponse` 的 `mime_type`/`binary`/`binary_size` 三个字段本轮零使用；`BuiltinSkillCapabilities` 的第三个可选字段（只验证了两个）；`instance_id` 的取值域与格式校验；协议 `1`/`4` 的静默态成因（「不在候选集」还是「协商后被吞」）；`schema_version=2` 与协议号 `2` 是否同一常量；`SandboxTraceEvent` 的 `sandbox_impl_type`/`event_name` **接收侧都不校验**（§5.8.13：四个 event_name 值行为全等），`categories`/`metrics` **已证是 `map<string,string>` / `map<string,double>`**、有正面对照；推事件触发 `RST_STREAM` 的下层原因；真 Electron 宿主下 `aha-rpc` 内部填表未观测；运行时流量（无观测）；`.so` 的函数级逻辑（§5.5/§5.6/§5.7 已补 crate 边界、接口命名、IPC 协议形状与 **`BP_GetInterface` 的 ABI + 接口表前三项（三个 IPC 回调）**；`ai_agent_ipc_recv` 的**帧结构**已拿到前 40 条（§5.8.4，JSON-RPC 两个方法 + HTTP/2 前导），**HTTP/2 unary 应答已实现并验证**（§5.8.9，`gRPC response frame too short` 修掉后整轮 `ERROR` = 0），`SubscribeExecutionEvents` 的**服务端流已做**（§5.8.10：开流有效，且原 A/B 结论被底物推翻）；`DynamicConfigService` 已答（`authoritative remote config is ready`）；`agent-tool-host` **已独立跑起来**（§5.8.12：19400/9000/9003/9001 四端口、`Execute` 六条命令真调通、host 目标真跑 shell 拿到 `uid=1000(liuzewen)`、`commandExecution.start/poll/stop` 全链路 + 幂等 + owner），源码路径 517 条、`TOOLHOST_*` 变量全表，`trae-sandbox` 已到「**9,750 符号** + NamespaceSandbox trait + bwrap 命令行逐字 + 无 seccomp + apparmor 后端存在（vtable 在 `.rodata`）」层，且执行层在本机的阻塞已精确归因到 `apparmor_restrict_unprivileged_userns=1` + 无 root，均无函数级细节；108 个扩展的 `dist/` 已做 sink 普查（`child_process` 74 文件 / `eval` 7 文件 / `shell.openExternal` 0，并逐条定性了 Emscripten 与 computer-use 两类）；遥测事件名抽取仍空；`~/.icube` 仍未定位；`trae-jwt-token` 已解为 **RS256 标准 JWT、无 scope 字段、7 天整、签名 512 B**。
-
-**复算入口**：见证据卡 §10 的只读命令清单。
 
 ### 5.8.15 第十六轮：lea 归属推翻与工具边界（2026-11-17）
 
@@ -491,3 +483,37 @@ size 完全一致: 5812/6454    （差的 642 个偏大 1–15 B，相邻函数�
 - **自建 gRPC 客户端坑**：varint 长度前缀写错（单字节装 137 B）→ prost 报 `CommandRequest.args: buffer underflow`，看起来像 schema 错实为拼装错。
 - **cueMain.js 域名**：19 个，本轮测 14 个。`byteintl.net` 9 个全解析到 10.x 私网且 HTTPS ERR ⇒ 内网专用；`byteintlapi.com` 2 个 404 可达；`mcs.zijieapi.com` 404；`maliva-mcs`/`mon-va.byteoversea.net` 无 DNS。
 - **BootUserInfo 第7字段**：8 个候选假阳（重启时序），判别力校验后推翻；子层 36 候选 bool 全 accepted，未定位。
+
+### 5.8.16 第十九轮：`BootUserInfo` 第 7 字段被证明「原理上探不到」，全量 lea 表建成（2026-11-17 补）
+
+- **A 项是否定结论，且可证明**：`userInfo={}`（空 map）、`{userId}`、`{account:{}}`、`{account:{scope}}` 四种输入全部 `applied=1` ⇒ `BootUserInfo` 的 7 个字段**全是可选**。serde 不会为可选字段报 `missing field`；bool 形态探针只对**非 bool 类型**报错，对 `bool`/数字字段必然静默。⇒ 「31 个候选全 applied=1」既可能是「都不是真字段」，也可能是「有几个是 bool 字段所以测不出来」。判别力双向对照在线（`userInfo.userId=True`→`expected a string`、`userInfo.account=True`→`expected struct BootUserAccount`、`userInfo.ZZZ_unknown=True`→`applied=1`），所以问题不在探针本身，在**判别原理**。
+- **新真字段**：`BootUserAccount.saasBootConfig`（类型 `BootSaasConfig`），由 `userInfo.account.saasBootConfig=true` → `invalid type: boolean true, expected struct BootSaasConfig` 实锤。`BootUserAccount` 现有真字段 = `scope`(string)、`tenant_id`(string)、`saasBootConfig`(struct)。
+- **serde FIELDS 数组布局（三轮修正后成功）**：`.data.rel.ro` 条目是 **32 字节步长**，`[+0]=ptr`（RELA `R_X86_64_RELATIVE` 的 addend）、`[+8]=len`、16 字节填充；全库 RELATIVE 重定位 345,448 条。三轮失败：① 8 字节指针扫描 → 183 个假 run（`Sun/Mon/Tue…`、V8 内建名）；② 16 字节 `(ptr,len)` + 要求 NUL 结尾 → 0 候选，**根因是字段名在 `.rodata` 里连续拼接、无 NUL 分隔**（`accountrefreshTokenexpiredAt…` 连成一串）；③ 改为**按记录自己的 len 切片**后成功。解出的四个数组：`0xdb5be20`(36 项超集)、`0xdb5c060`(18)、`0xdfe6680`(32)、`0xdfe6880`(16)。
+- **7 元素数组穷举**：按「`lea <array>` 后跟 `mov <argreg>,N`」配对扫全 `.text` 得 **28,814** 个 `(数组,计数)`；`count==7` 且名字全可解码的只有 5 个（`0xdb263c0` changed_codes…、`0xdb5f218` scope/tenant_id/userId/apiHost/ahaDoctorDomains/tea/ws、`0xdbc09e8` builtin/global/project/plugin/same_type/fork/ToolConfirmation、`0xdf65a28`、`0xdff98f0`），**没有一个含 userId+account+refreshToken**。⇒ `BootUserInfo` 的 FIELDS 数组不是「7 项连续字符串表」形态，或不在 `libharness.so` 的这批重定位里。
+- **B 项：全量 lea→`.rodata` 表**（`agent-tool-host`，字节模式扫描 `48/4c 8d /r` + `8d /r`，mod=00 rm=101，不依赖反汇编）：**272,728 站点 / 155,666 可打印串 / 11,531 个不同函数**，产物 `/tmp/lea_xref_full.tsv`（155,667 行，列 `site`/`target`/`func`/`string`）。关键词计数：`terminalReason` 70、`outputLimitBytes` 8、`SandboxTraceEvent` 30、`sandbox_impl` 2、`BootUserInfo` **0**（该结构在 `libharness.so`，不在 toolhost）。
+- **C 项：`TerminalReason` 的 Display 表完整还原**（`0x2e861c0`，210 条指令）：`movzx eax,[rdi]` → `lea rcx,[rip-0x2a842f7]`（基址 `0x401ed4`）→ `movsxd rax,[rcx+rax*4]` → `add rax,rcx` → `jmp rax`。12 项跳表，disc 0–9 对应 10 个变体，10/11 越界保留：
+
+  | disc | 变体 | 长度 |
+  |---|---|---|
+  | 0 | `process_exited` | 14 |
+  | 1 | `user_stop` | 9 |
+  | 2 | `execution_timeout` | 17 |
+  | 3 | `output_limit_exceeded` | 21 |
+  | 4 | `spawn_failed` | 12 |
+  | 5 | `sandbox_unavailable` | 19 |
+  | 6 | `sandbox_backend_failed` | 22 |
+  | 7 | `toolhost_restarted_before_spawn` | 31 |
+  | 8 | `process_lost` | 12 |
+  | 9 | `internal_error` | 14 |
+
+  arm 结构 = `mov rbx,[rsi]` → `mov rsi,[rbx+0x10]` → `cmp [rbx],rsi` → `mov byte [rax+rsi],0x22`（写引号）→ `lea rsi,<串>` → `jmp <公共尾>`，公共尾读 `mov edx,<len>` ⇒ **这是 `Display`（写带引号的调试串），不是解析器**。
+- **`outputLimitBytes` 的引用面**：3 个函数——`0x3073bc0`（serde 反序列化体，哨兵 `movabs r13,0x8000000000000000`）、`0x30dd0d0`（同形，哨兵 `…0001`）、`0x369d450`（Display，`mov edx,0x10`）。`.rodata @0x353d40` = `outputLimitBytes\x00` + 填充 + `0x18`(24) + `0xd040`(16.0 的 f64) + `port cannot be 0` ⇒ **混合默认值区，不能把紧跟的那个整数当该字段默认值读**。
+- **四条新边界**：① 全可选字段的结构无法用 `missing field` 探测；② serde FIELDS 的字段名字符串在 `.rodata` 里无 NUL 分隔，必须按 `(ptr,len)` 里的 len 切片；③ `.data.rel.ro` 的字段条目是 32 B 步长不是 16；④ 跳表 arm 的 `mov edx,<len>` 在公共尾里，从 arm 起点顺读会取到错的长度。
+
+## 6. 结论与边界
+
+**可用于能力审计的三条**：(a) 端点矩阵是「设计上的全集」，不等于运行时实际访问；(b) 「agent 能做什么」应以 §3 的命令清单为底物，不要以宣传页为底物；(c) 沙箱口径受限于 bwrap 的能力范围。
+
+**本轮没做**：trace 事件的 scope 注册（需 harness 自己发起一次 sandbox 执行，而本机必然 `sandbox_unavailable`，且 sysctl 自愈要 root）——**这是权限边界不是研究问题**；`agent-tool-host` 的函数级逻辑**已做**（§5.8.13：`.eh_frame_hdr` 二分表给 92,899 个函数起点，`trae-sandbox` symtab 6,454/6,454 = 100% 真值校验，26 个函数的字符串归属已落表），全量 `lea`→`.rodata` 表已建（§5.8.16：272,728 站点 / 155,666 可打印串 / 11,531 函数），但引用点语义（注册/调用/日志）未读；`trae-sandbox` 的 `linux::apparmor` 后端函数级（vtable 串在 `.rodata`、符号已 strip）；`listFolder` 的路径越界边界（`TOOLHOST_EXTRA_ALLOWED_PATHS` 未逐一试）；`outputLimitBytes` 的截断行为（引用面已解：3 个函数，§5.8.16）；`CommandResponse` 的 `mime_type`/`binary`/`binary_size` 三个字段本轮零使用；`BuiltinSkillCapabilities` 的第三个可选字段（只验证了两个）；`instance_id` 的取值域与格式校验；协议 `1`/`4` 的静默态成因（「不在候选集」还是「协商后被吞」）；`schema_version=2` 与协议号 `2` 是否同一常量；`SandboxTraceEvent` 的 `sandbox_impl_type`/`event_name` **接收侧都不校验**（§5.8.13：四个 event_name 值行为全等），`categories`/`metrics` **已证是 `map<string,string>` / `map<string,double>`**、有正面对照；推事件触发 `RST_STREAM` 的下层原因；真 Electron 宿主下 `aha-rpc` 内部填表未观测；运行时流量（无观测）；`.so` 的函数级逻辑（§5.5/§5.6/§5.7 已补 crate 边界、接口命名、IPC 协议形状与 **`BP_GetInterface` 的 ABI + 接口表前三项（三个 IPC 回调）**；`ai_agent_ipc_recv` 的**帧结构**已拿到前 40 条（§5.8.4，JSON-RPC 两个方法 + HTTP/2 前导），**HTTP/2 unary 应答已实现并验证**（§5.8.9，`gRPC response frame too short` 修掉后整轮 `ERROR` = 0），`SubscribeExecutionEvents` 的**服务端流已做**（§5.8.10：开流有效，且原 A/B 结论被底物推翻）；`DynamicConfigService` 已答（`authoritative remote config is ready`）；`agent-tool-host` **已独立跑起来**（§5.8.12：19400/9000/9003/9001 四端口、`Execute` 六条命令真调通、host 目标真跑 shell 拿到 `uid=1000(liuzewen)`、`commandExecution.start/poll/stop` 全链路 + 幂等 + owner），源码路径 517 条、`TOOLHOST_*` 变量全表，`trae-sandbox` 已到「**9,750 符号** + NamespaceSandbox trait + bwrap 命令行逐字 + 无 seccomp + apparmor 后端存在（vtable 在 `.rodata`）」层，且执行层在本机的阻塞已精确归因到 `apparmor_restrict_unprivileged_userns=1` + 无 root，均无函数级细节；108 个扩展的 `dist/` 已做 sink 普查（`child_process` 74 文件 / `eval` 7 文件 / `shell.openExternal` 0，并逐条定性了 Emscripten 与 computer-use 两类）；遥测事件名抽取仍空；`~/.icube` 仍未定位；`trae-jwt-token` 已解为 **RS256 标准 JWT、无 scope 字段、7 天整、签名 512 B**。
+
+**复算入口**：见证据卡 §10 的只读命令清单。
