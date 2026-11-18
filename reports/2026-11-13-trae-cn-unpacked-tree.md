@@ -552,3 +552,28 @@ size 完全一致: 5812/6454    （差的 642 个偏大 1–15 B，相邻函数�
 **本轮没做**：trace 事件的 scope 注册（需 harness 自己发起一次 sandbox 执行，而本机必然 `sandbox_unavailable`，且 sysctl 自愈要 root）——**这是权限边界不是研究问题**；`agent-tool-host` 的函数级逻辑**已做**（§5.8.13：`.eh_frame_hdr` 二分表给 92,899 个函数起点，`trae-sandbox` symtab 6,454/6,454 = 100% 真值校验，26 个函数的字符串归属已落表），全量 `lea`→`.rodata` 表已建（§5.8.16：272,728 站点 / 155,666 可打印串 / 11,531 函数），但引用点语义（注册/调用/日志）未读；`trae-sandbox` 的 `linux::apparmor` 后端函数级（vtable 串在 `.rodata`、符号已 strip）；`listFolder` 的路径越界边界（`TOOLHOST_EXTRA_ALLOWED_PATHS` 未逐一试）；`outputLimitBytes` 的截断行为（宿主已解：`StartExecutionRequest` 14 字段，§5.8.18；§5.8.16 的 3 函数归属已推翻）；`CommandResponse` 的 `mime_type`/`binary`/`binary_size` 三个字段本轮零使用；`BuiltinSkillCapabilities` 的第三个可选字段（只验证了两个）；`instance_id` 的取值域与格式校验；协议 `1`/`4` 的静默态成因（「不在候选集」还是「协商后被吞」）；`schema_version=2` 与协议号 `2` 是否同一常量；`SandboxTraceEvent` 的 `sandbox_impl_type`/`event_name` **接收侧都不校验**（§5.8.13：四个 event_name 值行为全等），`categories`/`metrics` **已证是 `map<string,string>` / `map<string,double>`**、有正面对照；推事件触发 `RST_STREAM` 的下层原因；真 Electron 宿主下 `aha-rpc` 内部填表未观测；运行时流量（无观测）；`.so` 的函数级逻辑（§5.5/§5.6/§5.7 已补 crate 边界、接口命名、IPC 协议形状与 **`BP_GetInterface` 的 ABI + 接口表前三项（三个 IPC 回调）**；`ai_agent_ipc_recv` 的**帧结构**已拿到前 40 条（§5.8.4，JSON-RPC 两个方法 + HTTP/2 前导），**HTTP/2 unary 应答已实现并验证**（§5.8.9，`gRPC response frame too short` 修掉后整轮 `ERROR` = 0），`SubscribeExecutionEvents` 的**服务端流已做**（§5.8.10：开流有效，且原 A/B 结论被底物推翻）；`DynamicConfigService` 已答（`authoritative remote config is ready`）；`agent-tool-host` **已独立跑起来**（§5.8.12：19400/9000/9003/9001 四端口、`Execute` 六条命令真调通、host 目标真跑 shell 拿到 `uid=1000(liuzewen)`、`commandExecution.start/poll/stop` 全链路 + 幂等 + owner），源码路径 517 条、`TOOLHOST_*` 变量全表，`trae-sandbox` 已到「**9,750 符号** + NamespaceSandbox trait + bwrap 命令行逐字 + 无 seccomp + apparmor 后端存在（vtable 在 `.rodata`）」层，且执行层在本机的阻塞已精确归因到 `apparmor_restrict_unprivileged_userns=1` + 无 root，均无函数级细节；108 个扩展的 `dist/` 已做 sink 普查（`child_process` 74 文件 / `eval` 7 文件 / `shell.openExternal` 0，并逐条定性了 Emscripten 与 computer-use 两类）；遥测事件名抽取仍空；`~/.icube` 仍未定位；`trae-jwt-token` 已解为 **RS256 标准 JWT、无 scope 字段、7 天整、签名 512 B**。
 
 **复算入口**：见证据卡 §10 的只读命令清单。
+
+### §5.8.19 第十七轮收口：owner 身份链 / 跳表定界 / 协议协商
+
+**A. `session owner` = `CommandRequest.session_id`（proto field 4）**。wire-type 错法确认 `CommandRequest` 四字段：`1=command_id`/`2=args`/`3=binary`/`4=session_id`。任意非空 `session_id` 通过校验；`listOwned` 的 `ListOwnedExecutionsRequest` required = `limit`→`maxOutputBytes`。`commandExecution.start` + `poll` + `stop` + `listOwned` 全链跑通，host 目标真执行 `id` 得到 `uid=1000(liuzewen)`；`poll` 的 `PollExecutionRequest` 四字段全必填（`executionId`/`maxOutputBytes`/`outputOffset`/`waitTimeoutMs`）。跨 owner `poll`/`stop` 一律 `TOOL_EXECUTION_FAILED`，`listOwned` 换 owner 得空数组 ⇒ owner 是「字符串前缀 + 进程内 registry」隔离。
+
+**B. 跳表定界（推翻 §5.8.16 的 inner 12 项）**。`libharness.so 0x7c469d0` 的 inner 表 `0x16bba08` **只有 6 项**，6–11 是越界读进下一张表 `0x16bba20`。四张表首尾相接，项数由 owner 的 `cmp/ja` 上界或邻表基址决定：
+
+| 表 | 项数 | owner | 上界 |
+|---|---|---|---|
+| `0x16bb9dc` | 11 | `0x7c469d0` | 邻表 `0x16bba08` |
+| `0x16bba08` | 6 | `0x7c469d0` | 邻表 `0x16bba20` |
+| `0x16bba20` | 5 | `0x7c4bf30` | `add eax,-3; cmp eax,4; ja` |
+| `0x16bba34` | 32 | `0x7c4df00` | `cmp rax,0x1f; ja` |
+
+inner 6 项全部解出：`""`/`""`/`non_zero_exit`(13)/`stopped`(7)/`execution_timeout`(17)/`execution_failed`(16)。outer 11 项 `[1..9]` = `stopped`/`execution_timeout`/`output_limit`/`spawn_failed`/`sandbox_unavailable`/`sandbox_backend_failed`/`toolhost_restarted_before_spawn`/`process_lost`/`internal_error`，`[10]` 是二次分派。
+
+**C. `lea` 表语义分类**。`155,667` 行去重 = 22,935 串：`free_text` 12,501 / `err_msg` 5,333 / `ident` 2,974 / `ident_camel` 982 / `serde_struct` 445 / `env_var` 253 / `cmd_name` 120 / `rust_type` 22。按函数聚合时 `0x426d150` 名下 13,860 串是 `.rodata` 邻居（跨函数边界），**不能当「函数引用集」**；唯一真正的业务密集点 `0x2f30140`（111 串，`Failed to sync lock state to browser-ctrl` 等）。
+
+**D. 协议号协商（推翻 §5.8.11「只有 [2] 接受」）**。`dyn.json` 丢失导致 JSON-RPC 回包 `result:` 为空，Catalog sync 根本没到；补回后 8 例实测：`[1]`→`schema_version=1`、`[2]`/`[1,2]`/`[2,3,4]`→`schema_version=2`、`[3]`/`[4]`/空 `instance_id`→`no common builtin Skill protocol or missing instance identity`。⇒ `builtin_skill_protocols` 是对端支持的协议版本集合，harness 取交集中它认识的最高版本（1 或 2）。`[2]` 在 8 秒窗口偶尔抓不到 sync 是时序抖动，12 秒窗口重跑三次全出现。
+
+**E. 路径与事件名**。`listFolder /root/.ssh` 解析阶段即 `IoError`；`readFile /root/.ssh/id_rsa` 报 `PermissionDenied`/`env_error`；`~/.icube` 不存在（只有 `~/.icube-remote-ssh`）。`{"event_name":"…"}` 字面量在 toolhost 只有 `sandbox_host_crash`/`sandbox_sdk_crash`，libharness 零个。
+
+**边界三条**：(1) 长链路 A/B 先验证前半段产物非空，否则「缺席」不是「语义」；(2) 无上界跳表靠邻表基址定长，不能靠「指针指向合法代码」；(3) `lea` 表的函数列在 `.rodata` 密集区退化成邻居聚合。
+
+**本轮没做（更新）**：trace `RST_STREAM` 下层原因；`0x7c4bf30`(5 项)/`0x7c4df00`(32 项) 两张表的语义；`0x2e861c0` 的 disc 10/11 两个越界 arm；真 Electron 宿主 `aha-rpc` 内部填表。
