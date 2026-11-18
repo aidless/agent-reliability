@@ -657,3 +657,49 @@ GOT 槽全为 `R_X86_64_RELATIVE`（type 8）：`0xe15c8c0`→addend `0x5950d70`
 
 **边界**：`.rodata` 可读字节可能含相邻串，站点/函数归属有效、串边界无效；
 `call [rip+disp32]` 是 6 字节；限流日志的条数不能当事件总数。
+
+### 5.8.23 第二十四轮收口：四端口协议面 / 沙箱 bwrap 与 TOML / scope 状态机与谓词 / IPC 接口表槽位
+
+四路并行（端口实测 / `trae-sandbox` 函数级 / scope 静态尾 / `BP_GetInterface` 双表）。**三处表述被运行时推翻**：9001 不是 gRPC、19400 不是 HTTP/2、preview_proxy 端口环境变量不是 `PREVIEW_PROXY_ADDR`。
+
+**A. 四端口协议面（实测）**
+
+| 端口 | 协议 | 证据 | 状态 |
+|---|---|---|---|
+| 9000 | gRPC `command.CommandService` | 前几轮已走通 `health`/`listFolder`/`commandExecution.*` | 可用 |
+| 9001 | **HTTP/1 JSON configure** | `GET /`→404 `not found`；`POST /v1/spk/configure` 空 `{}`→400 `{"error":"invalid configuration request"}`；grpcio 试 6 个方法全 `UNAVAILABLE / Socket closed` | 路由通、字段未解 |
+| 9003 | HTTP/1 + JSON-RPC 2.0（MCP） | `GET /`→405 `allow: POST`；`tools/*`→400 `-32602 invalid MCP parameters`；`prompts/list`/未知→200 `-32601 unknown MCP method` | 方法名识别、params 未解 |
+| 19400 | **volo Thrift TTHeader** | 发 h2 preface 收到 TTHeader 错误帧，ASCII `invalid thrift version: unknown protocol, first byte: 80` | 协议识别、方法名未恢复 |
+| 18080/18081 | preview_proxy | `:18080/`→401 `{"error":"Unauthorized"}`；`:18081/`→400 HTML 4914 B（`Service not running`） | 监听 |
+
+preview_proxy 的 env 真名是 `PREVIEW_PROXY_PORT` / `PREVIEW_PROXY_PUBLIC_PORT`（另有 `ENABLED`/`RESERVED_PORTS`/`ALLOWED_PORTS`/`CACHE_TTL_SEC`）；运行日志是 **AalG 压缩格式**，明文行未取到。
+
+**B. `trae-sandbox`：bwrap 逐参数 + profile TOML（symtab 真名）**
+
+热点真名：`0x1abd81` = `Commands as Subcommand::augment_subcommands`；`0x1adfab`/`0x1b1aea`/`0x1b4f69` = `main::{closure}` 三个 monomorphization；`0x1036a5` = `NamespaceSandbox as Sandbox::exec::{closure}`（size `0x1d40`）。
+
+argv 顺序（每项 call `0x10093e`=`SandboxSpec::execute::closure::closure` push）：`--die-with-parent` → `--unshare-all` → `--share-net` → `--ro-bind /` → `--dev` → `--overlay-src` → `--overlay` → `--tmp-overlay` → `--chdir` → `--` → `<cmd>` → `--bind` / `--setenv` → `--version bubblewrap`。`get_launcher_path` `0x1007c0` 读 `TRAE_SANDBOX_CLI_PATH`，空则 `/usr/local/bin/bwrap`。
+
+**关键分工**：bwrap 带 `--share-net` ⇒ **网络不在 namespace 层裁剪**，而在 main 层按 profile 的 `network_allow`/`network_deny` 判定并打 `Not allow tcp/udp network access:`。TOML 面由 serde 驱动（`Profile` 字段 `network/env/mount/source/target/upper/mode`；`MountMode` enum `ro`/`rw`/`sandbox-transit`/`sandbox-persist`；`MountConfig` 5 元素；入口 `toml::de::Deserializer::deserialize_struct` `0x11603a`；`SandboxSpec::from_profile` `0x122279`）。
+
+exec 链：shim `0x10360d` → `0x1036a5` → `get_profile_path`+`read_to_string` → `resolve_sandbox_execution_id` → `get_launcher_path` → `from_profile` → `check_unprivilege_user_namespace` → `SandboxSpec::execute` → `utils::run_cmd` `0x1009ca` → `tokio::process::Command::spawn` → `do_exec` `0x142230` → execve。
+
+**C. `agent-tool-host` 业务面切片（stripped，symFUNC=0）**
+
+`evaluate_script` 在 `0x2f00530` / `0x2f30140`（`script is required`，伴随 CDP `Runtime.evaluate` 的 `(function(){…})()` 注入模板）；`browser_use` 派发 `0x3112fd0`（`dispatch.rs:463`）/`0x2effdf0`/`0x34cd350`；`snapshot-bridge` 在 `0x53cd270`（`toolcall_id is required`）/`0x53dbcc0`/`0x53ee1f0`/`0x53be8e0`。
+
+**D. scope 状态机（A1）**：表 GOT `0xe172a70` → data `0xe191600`，步长 `0x18`，`+0x10` 状态字节（文件初值 `0xff`），`+0x11` lazy guard。唯一 writer `0xda31040`：`lock cmpxchg [rdi+0x11],1` 抢初始化 → `call 0xda31ca0` 聚合 provider → 映射 `3→0/2→2/1→1/0→0` → `xchg [rbx+0x10],al` 写状态 → `mov [rbx+0x11],2` 标完成。聚合器语义 `out=(old==3)?ret:((old==ret)?ret:1)` ⇒ **状态 2 ⟺ 全部 provider 一致返回 2；1 ⟺ 有分歧；0 ⟺ 无候选**；gate 放行的 3 是兼容 sentinel，writer 写值集合只有 `{0,1,2}`。
+
+**E. 两个谓词（A2）**：`0xda2fbb0`（9 字节）= `cmp sil,2` 相等即真、否则 `call 0xda2e6a0` 查 registry 走 `[vtable+0x28]`；`0xda733c0`（8 字节）= 全局 `0xe1f47a0==2` 取已安装 `(0xe1c7100,0xe1c7108)`，否则 `(0x2ae9ffa, 0xe157700)` no-op（`this` 指向 `.rodata` Rust panic 串起点 ⇒ 哑对象）。**两处 enum 变体名查不到**，二进制无符号名。
+
+**F. `libai_agent.so` 46 MB 无 FDE 区（A4）**：字符串引用侧闭合——原始模式扫 `.text` 得 19 个出现点、**10 个代码引用**（`0xc4f3402`/`0xc4f4325`/`0xc4f433e`/`0xc4f4357`/`0xc4f4418`/`0xc4f4431`/`0xc4f444a`/`0xc4f5e3b`/`0xc4fab98`/`0xc4fd712`）。函数起点/长度查不到：padding 候选首条全是 mid-instruction，线性反汇编到下一处 `0xcc` 全部收敛到同一 `0xc5570c2`（跨函数失步）。
+
+**G. `BP_GetInterface` 双表槽位（主会话实测）**：`BP_IPC_SERVER;1.0`→`0x…930ae8`、`BP_IPC_CLIENT;1.0`→`0x…930ae0`、`BP_AHANET_CLIENT;1.0`→`0x…934ff0` ⇒ **SERVER 与 CLIENT 是相邻 8 字节的两个表头**，AHANET 独立分配。**SERVER 表 == CLIENT 表的 `[1..31]` 左移一位**（`SERVER[k]==CLIENT[k+1]`，`SERVER[31]=1`）⇒ 两张表共享同一批函数与名字池，只差一个槽位偏移；这就是「同一 handle 用 `[0]` 在 CLIENT 上能发、在 SERVER 上语义错位」的根因。CLIENT 表 32 槽：`[0]/[1]/[2]/[3]` = 四个 `.text` 入口（`0xd5f3c40` 带 `sub rsp,0x1c8` 是发送函数）、`[4]`=`handleevent`、`[6]`=`datastopchatlostGoalauthLark…` 字段名池、`[12]`=`bp_client_on_message`、`[22]`=`/root/.cargo/git/checkouts/aha-r…`（长 `0x53`）。
+
+**口径收获第二十三条**：**「能 accept」不等于「协议对」——端口必须先证协议再证语义。** 本轮三个端口都能连上，只有 9000 真跑通命令；防线是用一条**故意错的**协议发一发，读错误帧里的协议名，比猜方法名快一个数量级。
+
+**新假阳类型 (x)**：把「同族函数名出现在 strings 里」当成「该函数存在」。`agent-tool-host` 是 stripped，裁定只能引「源码路径 + FDE 起点」，**demangle 真名与函数边界不可引用**。
+
+**边界六条**：(1) 端口在监听 ≠ 协议面可用；(2) 端口协议名不能凭产品文档猜（9001/19400 都对 h2 preface 有反应但都不是 gRPC）；(3) 数值状态能还原语义，变体名要有符号或字符串证据；(4) 「writer 只写 {0,1,2}」不等于「3 不存在」（3 是 gate 侧 sentinel，两侧语义不必对称）；(5) 默认 vtable 的 `this` 指向 `.rodata` panic 串 ⇒ 哑占位，调用不崩也不做事；(6) 无 FDE 区的函数起点不能用「向前找 padding」恢复。
+
+**本轮没做**：9001 完整必填字段与 body schema；9003 的 canonical extensionId 注入位置与 params schema（4 种候选头名全无效）；19400 合法 volo 方法名；preview_proxy AalG 日志明文行；无 FDE 区 5 个 `lea` 站点的函数起点/长度。
