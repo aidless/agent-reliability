@@ -747,3 +747,14 @@ exec 链：shim `0x10360d` → `0x1036a5` → `get_profile_path`+`read_to_string
 - **副产物**：`getSandboxAvailability` reason 随 `TRAE_SANDBOX_CLI_PATH` 变：默认 `cli_not_found` → 设 `/usr/bin/bwrap` 后 `dependencies_unavailable`。CLI 路径哨兵生效，依赖仍缺。
 - **三端口**：维持 §5.8.25「收敛性查不到」，真流量/SDK 不可得。
 - **总账**：surface §39.5 三档表结案——已闭合 12 项、缺底物 3 项、环境边界 2 项、缺凭据 1 项。主线无新协议结论可产出。
+
+### 5.8.27 第二十七轮：翻盘三条件实测 —— sandbox 在 ecs-hz 走到 bwrap 层（2026-11-18）
+
+用户 m07830「全做」。三个翻盘条件全部推到判决，唯一新协议级读数在②。
+
+- **② toolhost 可迁移**：`agent-tool-host` 最高依赖 `GLIBC_2.28`，ecs-hz glibc 2.35 ⇒ 二进制直接可跑（`ldd` 0 缺失）。env：`SPK_CONFIGURE_PORT=19001` 绕开被 `/root/deploy/receiver.py` 占用的 9001；四端口 9000/19001/9003/19400 全起。杀进程用 `pkill -x ath`（`pkill -f /tmp/ath` 会自杀）。
+- **② sandbox 决定性差异**：`getSandboxAvailability` 本机 `unavailable` → ecs-hz **`available`**。start 的 sandbox config 必填链 `config` → `networkDefault` → `trace`(bool)；trace 收 map 报 `invalid type: map, expected a boolean`。
+- **② 真走到 bwrap**：`target:{type:"sandbox",config:{networkDefault:"allow",trace:false}}` + shell 命令 → `code=0`/`status=exited`、`output="bwrap: execvp exec: No such file or directory"`、`sandbox={outcome:"completed",sandboxImplType:"ns",traceEvents:[]}`。shell/argv 同错、换 requestId 排除幂等 ⇒ 剩 exec helper 一个缺件，按收敛纪律停止。
+- **① turn 注入**：入口串已定位（`agent_inbox`/`turn_type`/`user_message_id`/`SuperCompletionQueryRequest`，`super_completion_query.rs:257`），构造合法 turn 消息体成本高 ⇒ 缺底物，未深入。
+- **③ 真 Electron**：需 GUI 登录态，静态链已全解 ⇒ 环境边界。
+- **判决修正**：sandbox 从 §5.8.26 的「环境边界」升级为「换环境走到 bwrap、只剩 exec helper 缺件」——可迁移解除，非死边界。
