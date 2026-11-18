@@ -600,3 +600,36 @@ inner 6 项全部解出：`""`/`""`/`non_zero_exit`(13)/`stopped`(7)/`execution_
 **副产品**：`p19`/`p20` 成功解码后 `scope is unavailable` 仍回来 4 次（count=1/2/4/8），`execution_id=exec1`（`p18` 是 `S1`）——事件被完整解码、字段归属正确，只是 scope 未注册。这与 §5.8.13 的语义一致：接收侧不校验，decoded 后先丢。
 
 **边界新增一条**：给 map 字段喂标量时，报错发生在**内层子消息解析**（`invalid tag value: 0`），不是 wire type 错——所以不能靠「报错文案里有 wire type」判断字段是 scalar 还是 map。
+
+### 5.8.21 第二十二轮收口：两张跳表是 `Drop` glue、二进制三字段、协议无第三字段、越界 arm、原生侧填表
+
+**A. `0x16bba20`(5 项) / `0x16bba34`(32 项) 是 `Drop` impl glue，不是业务表**。表项是 **4 字节 u32 相对偏移**（不是 8 字节对），`target = 表基址 + entry`；校准点 `0x16bba20 + 0x659053a = 0x7c4bf5a`，与 owner 反汇编首 arm 逐字节相同。
+
+| 表基址 | 项数 | owner | 分派键 | 唯一 target |
+|---|---|---|---|---|
+| `0x16bb9dc` | 11 | `0x7c469d0` | 邻表 `0x16bba08` | — |
+| `0x16bba08` | 6 | `0x7c469d0` | 邻表 `0x16bba20` | — |
+| `0x16bba20` | 5 | `0x7c4bf30` | `movzx eax,[rdi+0x1b9]; add eax,-3; cmp eax,4; ja` | 5 |
+| `0x16bba34` | 32 | `0x7c4df00` | `movzx eax,[rdi]; cmp rax,0x1f; ja` | 11 |
+
+`0x7c4df00` 的 11 个唯一 target 里，`0x7c4e387` 被 8 个 idx（18,19,20,22,24,25,26,27）共用，就是 `add rsp,8; pop×6; ret` 的 **no-op 返回**；其余 arm 形态全是 `mov rsi,[rdi+N]; test rsi,rsi; je …; mov rdi,[rdi+M]; mov edx,1; call [rip+…]`（即 `__rust_dealloc`）。caller 数：`0x7c4bf30` 3 个、`0x7c4df00` 27 个 ⇒ 典型 drop glue，不是 enum 字符串表。
+
+GOT 槽全为 `R_X86_64_RELATIVE`（type 8）：`0xe15c8c0`→addend `0x5950d70`（一跳 `jmp 0xda9e1a0`）、`0xe15c8f0`→`0xdb0492b`、`0xe16a328`→`0xab4e7e0`。
+
+**B. `CommandResponse` 的 `binary` / `binary_size` / `mime_type` 由 `readBinaryFile` 填，`readFile` 不填**。参数名是 **`filePath`**（给 `path` 报 `invalid ReadBinaryFileParam - missing field \`filePath\``）。`/tmp/th3/t/x.bin`(256 B) → keys `{1:0, 2:256, 3:0, 4:0, 5:24, 6:256}`：`f2` 装裸字节、`f6`=size、`f5`=mime，`result`(f1) 为空串 ⇒ 文本走 `result`、二进制走 `binary`，互补不重叠。
+
+`maxBytes` 生效：`big.bin`(1,024 B) 默认取 1024、`maxBytes:64` → 64；`x.bin` + `maxBytes:1000` 仍 256（不超过文件长度）。**`mime_type` 恒 `application/octet-stream`**，`a.txt`(1,200 B)/`a.json`(7 B) 也不嗅探。gRPC 上限：`huge.bin`(5,242,880 B) 不设 `maxBytes` → `RESOURCE_EXHAUSTED (5242922 vs. 4194304)`（= 5 B 帧头 + 37 B 字段开销）⇒ 读大文件必须分片。
+
+**C. `BuiltinSkillCapabilities` 没有第三字段**。真实 toolhost 的应答 136 B = `result` 里外层包 `{"code":0,"errorMessage":null,"data":{"builtin_skill_protocols":[1,2],"instance_id":"f7076547-8450-41ea-930a-30fc5ba856d8"}}` ⇒ `data` 只有两个字段，`instance_id` 是 **UUID v4 形态**；与 `.rodata` 的 `struct BuiltinSkillCapabilities with 2 elements` 一致。
+
+**D. `0x2e861c0` 的 disc 10/11 不是独立 arm**。jump table 基址 `0x401ed4`（`lea rcx,[rip-0x2a842f7]`），32 项全落 `.text=[0x2821d80,0x5b4a5dc)`；idx 32–35 是 OVERRUN（`0x2e86847`/`0x2e867fa`/`0x2e86822`/`0x2e867ca`）。`.eh_frame_hdr` 校验（`count=unpack_from('<I',hraw,8)`、`starts=92899`）：`0x2e861c0` 是 FDE 起点，而 `0x2e8660b`/`0x2e86610`/`0x2e86287`/`0x2e86317` **都不是** ⇒ 该处的 `add dword ptr [rbx], edi` 是从指令中间起算的反汇编伪影。同函数 8 个 `lea` 落在 `0x408a0b`–`0x408a9a` 的连续串池：`user_stop`(9)/`internal_error`(14)/`execution_timeout`(17)/`sandbox_unavailable`(19)/`output_limit_exceeded`(21)/`sandbox_backend_failed`(22)/`toolhost_restarted_before_spawn`(31)/`process_lost`(12) ⇒ `TerminalReason` 的 `Display`/`as_str`。
+
+**E. `BB_IPC_CLIENT;1.0` 由原生侧提供，不在 Electron JS 里**。`@aha-kit/{ipc,rpc,ipc-linux-x64}` 三个包全零命中；`libai_agent.so` 与 `trae-cn` 各 1 处。提供方是 `byted_aha_ffi::ffi`（源码树 `aha-rpc-793dace3696119f7/0bb859b/aha-ffi-rust/src/ffi.rs`，事件行号 `159/221/227/269/294/304/314/344/354/357/364/376/380/382/386/399/402/405/411/417/419/422/425/433/451/461/468/470/483/498/509/511/517/524/543/557/562/567/569/575/597/601/605/609/614/640/675/681/736/742/750/760/769/775/778/788/803/809/812/830/832`），三路返回 `returning BP_IPC_CLIENT_TABLE` / `returning BP_IPC_SERVER_TABLE` / `-> unknown interface, returning null`；失败路径 `failed to get BB_IPC_CLIENT;1.0 from browser`、`BP_IPC_CLIENT: on_message -> WARNING: CLIENT_CONNECTIONS not initialized`、`register_server_state: SERVERS not initialized!`。
+
+配套导出：`get_browser_iface`/`create_browser_client`/`create_browser_server`/`create_ffi_client_handle`/`create_ffi_server_handle`/`create_send_callback`/`create_close_callback`/`create_shutdown_callback`/`create_client_send_callback`/`create_client_disconnect_callback`/`register_server_state`/`register_client_socket`/`bp_on_connected`/`bp_on_message`/`bp_on_disconnected`/`bp_client_on_message`/`start_message_receiver_thread`。⇒ 宿主 `trae-cn` 经 FFI 把函数表交给 `libai_agent.so`，`get_browser_iface` 拿到表后 `CLIENT_CONNECTIONS`/`SERVERS` 才可用；自建宿主 `probe_grpc*.c` 直接 `dlsym` 拿表头手填 `[0]`，绕过了这一层 —— 这解释了「`CLIENT[0]` 是发送槽只在自建宿主视图成立」。
+
+`libai_agent.so` 的 `.text=[0x6ca2000,0x85150dc)` 内对上述串做字节模式扫描 **命中 0** ⇒ 这些串不是 `lea` 直接取，而是经 `get_browser_iface` 的字符串比较表间接引用；静态追到 `strcmp` 调用点本轮未做。
+
+**边界五条**：(1) 跳表项宽度要按 owner 的 `movsxd rax, dword ptr [rcx+rax*4]` 反推（`*4` = 4 字节），按 8 字节读会得到 `0x065906360659053a` 这种「看起来像地址」的 ASCII 值；(2) 相对偏移必须先校准一条（基址 + entry 与首 arm 逐字节对齐）才算定界成功；(3) `Drop` glue 的识别特征是「arm 只碰指针 + 有 no-op 返回 + 多索引共用」，不是「跳表 + 32 项」；(4) `mime_type` 不能从扩展名推（本实现零嗅探）；(5) 「表不存在」与「表在别的层」要分开——JS 层零命中不等于没有这张表。
+
+**本轮没做**：`strcmp` 调用点定位（`BB_IPC_*` 串的静态引用链）；`SubscribeExecutionEvents` 的 scope 注册（权限边界，不追）；两个二进制的全量函数级还原。
