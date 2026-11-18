@@ -758,3 +758,13 @@ exec 链：shim `0x10360d` → `0x1036a5` → `get_profile_path`+`read_to_string
 - **① turn 注入**：入口串已定位（`agent_inbox`/`turn_type`/`user_message_id`/`SuperCompletionQueryRequest`，`super_completion_query.rs:257`），构造合法 turn 消息体成本高 ⇒ 缺底物，未深入。
 - **③ 真 Electron**：需 GUI 登录态，静态链已全解 ⇒ 环境边界。
 - **判决修正**：sandbox 从 §5.8.26 的「环境边界」升级为「换环境走到 bwrap、只剩 exec helper 缺件」——可迁移解除，非死边界。
+
+### 5.8.28 第二十八轮：sandbox exec helper 真相 —— CLI 指错，修正后真执行成功（2026-11-18）
+
+用户 m07917「全做」。补 exec helper + 补 turn 注入两件事。
+
+- **strace 真相**：`bwrap exec --storage-path … --config-name … --shell-path /bin/bash --sandbox-impl ns --command-line …`——这套五参数 `exec` 子命令属于 trae-sandbox（`sandbox::ffi_sandbox::exec`），不是裸 bwrap。上轮 `TRAE_SANDBOX_CLI_PATH=/usr/bin/bwrap` 指错对象，bwrap 把 `exec` 当程序名 execvp，全 PATH ENOENT。根因是 CLI 配置错，不是缺 helper。
+- **修正后真执行**：传 `modules/sandbox/{trae-sandbox,bwrap(0.11.0),sbox.so,sbox_sdk.so}`（全 ≤GLIBC_2.28）到 ecs-hz，`TRAE_SANDBOX_CLI_PATH=<trae-sandbox>` → target sandbox + shell `echo SANDBOX_OK; id -u; hostname` → `output="SANDBOX_OK\n0\n<host>\n"`、`exitCode=0`、`sandboxImplType=ns`/`outcome=completed`、`sandbox_impl.json={"impl":"ns"}`。`trace:true` 也成功但不产 trace.log/traceEvents。
+- **旧结论修正**：§5.8.27 的「exec helper 缺件」改为「CLI 指错对象」；trae bwrap 是 0.11.0/GLIBC_2.28/ecs-hz 可跑（非旧记的 0.9.0/2.38）。
+- **turn 注入**：入口定位到 `harness/hub/bridge/src/cli/task/create.rs:269` + `initial_message.content/query` + 路由 `chat/internal_turn`/`chat/delivery`；构造完整消息体成本高 ⇒ 缺底物，收敛收手。
+- **判决**：补 exec helper 闭合（翻盘②全缺口填平）；sandbox 目标在 ecs-hz 端到端真执行成功是本轮新增确定协议事实。
