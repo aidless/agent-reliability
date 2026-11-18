@@ -768,3 +768,12 @@ exec 链：shim `0x10360d` → `0x1036a5` → `get_profile_path`+`read_to_string
 - **旧结论修正**：§5.8.27 的「exec helper 缺件」改为「CLI 指错对象」；trae bwrap 是 0.11.0/GLIBC_2.28/ecs-hz 可跑（非旧记的 0.9.0/2.38）。
 - **turn 注入**：入口定位到 `harness/hub/bridge/src/cli/task/create.rs:269` + `initial_message.content/query` + 路由 `chat/internal_turn`/`chat/delivery`；构造完整消息体成本高 ⇒ 缺底物，收敛收手。
 - **判决**：补 exec helper 闭合（翻盘②全缺口填平）；sandbox 目标在 ecs-hz 端到端真执行成功是本轮新增确定协议事实。
+
+### 5.8.29 第二十九轮：sandbox 边界实测 + 全项目总账（2026-11-18）
+
+用户 m08003「全做」。
+
+- **trace 落盘**：strace toolhost 进程树，`trace:true` 时 toolhost 执行后读 `<eid>/sandbox/trace.log`，但 trae-sandbox 不写该文件、profile TOML 无 trace 字段 ⇒ 数据流两端接口不齐，确定结论。
+- **权限边界**：`readOnlyPaths:["/tmp"]` → `Read-only file system` **真拦截**（mount namespace remount 有效）；`networkDefault:"deny"` → curl `HTTP=200` **没拦**（bwrap `--share-net`，网络不在 namespace 裁）。⇒ 文件真隔离、网络假隔离。
+- **总账终版**：已闭合 16 / 缺底物 6 / 环境边界 3 / 缺凭据 1；主线无「还没查但能查」项。翻盘三新底物：可控 LLM+turn 注入 / 真 Electron 登录态 / JWT 公钥。
+- 判决：配置被 accept ≠ 生效（须见拦截副作用）；读端存在 ≠ 写端存在（trace.log 只有 O_RDONLY）。
