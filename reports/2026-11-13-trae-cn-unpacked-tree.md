@@ -735,3 +735,15 @@ exec 链：shim `0x10360d` → `0x1036a5` → `get_profile_path`+`read_to_string
 **新假阳类型 (z)**：HTTP 状态码变绿 ≠ 参数被接受。`x-extension` 得 200 但 body 是 `-32601 unknown method`；判「接受」必须找只在成功路径出现的串（`MCP operation admitted`）。
 
 **边界**：②③④⑤⑥ 全为收敛性查不到（2 实验用尽 / 无区分度 / 无解码器 / strings 只有噪声），不是「没做」，不再列活跃目标；① 是等价注入验证，不等于 harness agent loop 自主发起工具调用（后者需真 LLM 后端）。
+
+
+### 5.8.26 第二十六轮收口：五动作判决 + open objectives 总账结案（2026-11-18）
+
+承接 m07709/m07727。五个高价值动作全部推到判决，无新协议结论；剩余项分诊为环境边界/缺底物/缺凭据。
+
+- **接 LLM/cloud**：假 cloud server（`127.0.0.1:19999`）零请求 —— harness 加载 `cloud_url` 正常、67 modules/31 tools 全起、Subscribe 开流，但 agent loop 靠**用户 turn** 触发 `api/agent/v3/create_agent_task`，自建宿主替身没注入用户消息 ⇒ 换 `cloud_url` 无效，缺的是 turn 注入底物。
+- **真 Electron 宿主**：`/usr/bin/trae-cn` + `DISPLAY=:0` 可用，但需 GUI 登录态；静态 FFI 填表链已全解（§5.8.21–5.8.24），动态验证边际价值低，归环境边界。
+- **换环境沙箱**：本机 `apparmor_restrict_unprivileged_userns=1`，`/usr/bin/bwrap` 0.9.0 `uid map Permission denied`（硬限制，非功能缺失）。`ecs-hz`（root、`cap_sys_admin`、无 apparmor、1 GB/无 GPU）本机 bwrap 因 glibc 2.38 不兼容，`apt-get install bubblewrap` 装 0.6.1 后 `bwrap --ro-bind / / --unshare-all --share-net --dev /dev -- /bin/echo BWRAP_OK` rc=0、`/bin/id`=root。整套 toolhost 迁移仅受 glibc 阻（toolhost RSS 61.7 MB，内存够）。
+- **副产物**：`getSandboxAvailability` reason 随 `TRAE_SANDBOX_CLI_PATH` 变：默认 `cli_not_found` → 设 `/usr/bin/bwrap` 后 `dependencies_unavailable`。CLI 路径哨兵生效，依赖仍缺。
+- **三端口**：维持 §5.8.25「收敛性查不到」，真流量/SDK 不可得。
+- **总账**：surface §39.5 三档表结案——已闭合 12 项、缺底物 3 项、环境边界 2 项、缺凭据 1 项。主线无新协议结论可产出。
