@@ -471,7 +471,7 @@ size 完全一致: 5812/6454    （差的 642 个偏大 1–15 B，相邻函数�
 - **重启事故**：主机 2026-11-17T12:47:54Z 重启，`/data4`（NTFS `/dev/nvme0n1p5`）以 dirty volume 挂载失败（`ntfs3: volume is dirty and "force" flag is not set!`），`libharness.so`（236,737,856 B）与 `agent-tool-host`（98,546,296 B）失联，`/tmp/hst/*` 全丢。
 - **无 root 修复**：用户 sudo 密码所有变体被拒，改走 docker 组（等价 root）：`docker run --rm --privileged -v /:/host arga-clone:local chroot /host /usr/bin/ntfsfix /dev/nvme0n1p5` → `$MFTMirr record 3` 修正 + journal 清空；特权容器 shared mount 传播后宿主 `/data4` 可见（238G / 161G used / 78G free）。挂载选项 `uid=0` ≠ fstab `uid=1000` ⇒ 非 fstab 路径、重启会再掉。
 - **重建工具链**：`/tmp/elfenv`（pyelftools 0.33 + capstone 5.0.7）、`/tmp/probe_grpc15`（47,936 B）、`/tmp/hst/full21.json`（21 键从 §5.8.13 表逐字重造，`applied=1`）、`/tmp/hst/ui_acc.py`（bool 形态探 `userInfo.account.<key>`）。
-- **`BootUserAccount` 进展**：重启前已解 `scope`/`tenant_id`（string）；本轮 31 候选（user/userName/openId/unionId/displayName/…/tenantId/region/id/name/type）bool 形态全 `applied=1` ⇒ 全不是真字段。正对照 `scope=true` → `deserialize BootConfig failed: invalid type: boolean true, expected a string`，探针判别力在线。`BootUserInfo` 已解 6/7 且已证第 7 字段用现有探针原理上探不到（§5.8.16），第 7 字段仍未找到。
+- **`BootUserAccount` 进展**：重启前已解 `scope`/`tenant_id`（string）；本轮 31 候选（user/userName/openId/unionId/displayName/…/tenantId/region/id/name/type）bool 形态全 `applied=1` ⇒ 全不是真字段。正对照 `scope=true` → `deserialize BootConfig failed: invalid type: boolean true, expected a string`，探针判别力在线。`BootUserInfo` **7/7 全解**（§5.8.17：第 7 字段 = `refreshExpiredAt`；`BootUserAccount` 4/4、`BootSaasConfig` 1/1 同步闭合），第 7 字段仍未找到。
 - **假阳 (o)**：占位符 `SO` 作 argv[1] → `DLOPEN_FAIL` + 31/31 `applied=0`，差点读成「31 个候选全是真字段」；修真实路径后 31/31 `applied=1`。防线 = 每轮探针先跑一正一负对照。
 - §6「本轮没做」相应改写：`BootUserAccount` 子字段从「未解」改为「2 真字段 + 31 候选排除」。详细判决见 `~/rea-work-20261108/reports/OWNER_STATUS.md` §28 与 surface §27。
 
@@ -486,7 +486,7 @@ size 完全一致: 5812/6454    （差的 642 个偏大 1–15 B，相邻函数�
 
 ### 5.8.16 第十九轮：`BootUserInfo` 第 7 字段被证明「原理上探不到」，全量 lea 表建成（2026-11-17 补）
 
-- **A 项是否定结论，且可证明**：`userInfo={}`（空 map）、`{userId}`、`{account:{}}`、`{account:{scope}}` 四种输入全部 `applied=1` ⇒ `BootUserInfo` 的 7 个字段**全是可选**。serde 不会为可选字段报 `missing field`；bool 形态探针只对**非 bool 类型**报错，对 `bool`/数字字段必然静默。⇒ 「31 个候选全 applied=1」既可能是「都不是真字段」，也可能是「有几个是 bool 字段所以测不出来」。判别力双向对照在线（`userInfo.userId=True`→`expected a string`、`userInfo.account=True`→`expected struct BootUserAccount`、`userInfo.ZZZ_unknown=True`→`applied=1`），所以问题不在探针本身，在**判别原理**。
+- ~~**A 项是否定结论，且可证明**~~ **已被 §5.8.17 推翻（底物坏，第 7 字段 = `refreshExpiredAt`）**：`userInfo={}`（空 map）、`{userId}`、`{account:{}}`、`{account:{scope}}` 四种输入全部 `applied=1` ⇒ `BootUserInfo` 的 7 个字段**全是可选**。serde 不会为可选字段报 `missing field`；bool 形态探针只对**非 bool 类型**报错，对 `bool`/数字字段必然静默。⇒ 「31 个候选全 applied=1」既可能是「都不是真字段」，也可能是「有几个是 bool 字段所以测不出来」。判别力双向对照在线（`userInfo.userId=True`→`expected a string`、`userInfo.account=True`→`expected struct BootUserAccount`、`userInfo.ZZZ_unknown=True`→`applied=1`），所以问题不在探针本身，在**判别原理**。
 - **新真字段**：`BootUserAccount.saasBootConfig`（类型 `BootSaasConfig`），由 `userInfo.account.saasBootConfig=true` → `invalid type: boolean true, expected struct BootSaasConfig` 实锤。`BootUserAccount` 现有真字段 = `scope`(string)、`tenant_id`(string)、`saasBootConfig`(struct)。
 - **serde FIELDS 数组布局（三轮修正后成功）**：`.data.rel.ro` 条目是 **32 字节步长**，`[+0]=ptr`（RELA `R_X86_64_RELATIVE` 的 addend）、`[+8]=len`、16 字节填充；全库 RELATIVE 重定位 345,448 条。三轮失败：① 8 字节指针扫描 → 183 个假 run（`Sun/Mon/Tue…`、V8 内建名）；② 16 字节 `(ptr,len)` + 要求 NUL 结尾 → 0 候选，**根因是字段名在 `.rodata` 里连续拼接、无 NUL 分隔**（`accountrefreshTokenexpiredAt…` 连成一串）；③ 改为**按记录自己的 len 切片**后成功。解出的四个数组：`0xdb5be20`(36 项超集)、`0xdb5c060`(18)、`0xdfe6680`(32)、`0xdfe6880`(16)。
 - **7 元素数组穷举**：按「`lea <array>` 后跟 `mov <argreg>,N`」配对扫全 `.text` 得 **28,814** 个 `(数组,计数)`；`count==7` 且名字全可解码的只有 5 个（`0xdb263c0` changed_codes…、`0xdb5f218` scope/tenant_id/userId/apiHost/ahaDoctorDomains/tea/ws、`0xdbc09e8` builtin/global/project/plugin/same_type/fork/ToolConfirmation、`0xdf65a28`、`0xdff98f0`），**没有一个含 userId+account+refreshToken**。⇒ `BootUserInfo` 的 FIELDS 数组不是「7 项连续字符串表」形态，或不在 `libharness.so` 的这批重定位里。
@@ -509,6 +509,29 @@ size 完全一致: 5812/6454    （差的 642 个偏大 1–15 B，相邻函数�
   arm 结构 = `mov rbx,[rsi]` → `mov rsi,[rbx+0x10]` → `cmp [rbx],rsi` → `mov byte [rax+rsi],0x22`（写引号）→ `lea rsi,<串>` → `jmp <公共尾>`，公共尾读 `mov edx,<len>` ⇒ **这是 `Display`（写带引号的调试串），不是解析器**。
 - **`outputLimitBytes` 的引用面**：3 个函数——`0x3073bc0`（serde 反序列化体，哨兵 `movabs r13,0x8000000000000000`）、`0x30dd0d0`（同形，哨兵 `…0001`）、`0x369d450`（Display，`mov edx,0x10`）。`.rodata @0x353d40` = `outputLimitBytes\x00` + 填充 + `0x18`(24) + `0xd040`(16.0 的 f64) + `port cannot be 0` ⇒ **混合默认值区，不能把紧跟的那个整数当该字段默认值读**。
 - **四条新边界**：① 全可选字段的结构无法用 `missing field` 探测；② serde FIELDS 的字段名字符串在 `.rodata` 里无 NUL 分隔，必须按 `(ptr,len)` 里的 len 切片；③ `.data.rel.ro` 的字段条目是 32 B 步长不是 16；④ 跳表 arm 的 `mov edx,<len>` 在公共尾里，从 arm 起点顺读会取到错的长度。
+
+### 5.8.17 第二十轮：`BootUserInfo` 7/7 全解——上一轮的「查不到」是底物坏（2026-11-17 补）
+
+- **§5.8.16 的 A 项结论作废**。它写「`BootUserInfo` 第 7 字段用现有探针原理上探不到」，推理没错（全可选 ⇒ `missing field` 无效），错在**它读的 `applied=1` 来自坏底物**：那一轮的 `full21.json` 自身无法反序列化，所有输入（包括负对照 `ZZZ_unknown`）一律返回 `applied=1`。
+- **`.data.rel.ro` 步长是 16 字节，不是 32**。判据不是地址对齐（`dva=0xdb0b980` 同时满足 `%16==0` 与 `%32==0`，对齐信息量为零），而是「`+8` 处的 u64 恰好等于 `+0` 所指字符串的长度」。按 32 字节读会隔项跳过，所以 §5.8.16 的「7 元素数组里没有 userId+account+refreshToken」是扫描错，不是不存在。
+- **`BootUserInfo` 的 7 个字段**（数组 `0xdb5c0c0`，代码侧 `0x56517f3` 的 `r9d=7`）：
+
+  | # | 字段 | 类型（探针报错） |
+  |---|---|---|
+  | 0 | `account` | struct `BootUserAccount` |
+  | 1 | `token` | string |
+  | 2 | `refreshToken` | string |
+  | 3 | `expiredAt` | string |
+  | 4 | **`refreshExpiredAt`** | string |
+  | 5 | `userId` | string |
+  | 6 | `tokenReleaseAt` | string |
+
+  第 7 个字段 = **`refreshExpiredAt`**，是 §5.8.14 记的 6 个已知字段之外唯一多出来的那个。
+- **`BootUserAccount` 是 4 个字段**（数组 `0xdb5c190`，代码侧 `0x55081c4` 的 `r9d=4`）：`saasBootConfig`(struct `BootSaasConfig`)、`scope`(string)、`tenantId`(string)、`tenant_id`(string)。**`tenantId` 与 `tenant_id` 是两个不同的真字段**，不是同一个键的两种写法。
+- **`BootSaasConfig` 只有 1 个字段**（数组 `0xdb5c140`，代码侧 `0x54fc852` 的 `r9d=1`）：`apiHost`(string)。
+- **完整 `userInfo` 首次被接受**：7 字段 + 4 字段 account + 1 字段 saas 全填 → `applied=1`，无 `deserialize` 失败。
+- **三面一致法**（可复用）：数据面（`.data.rel.ro` 连续 N 项，步长自证）+ 代码面（`mov ecx,<名字长度>` + `mov r9d,<字段数>` + `call deserialize_struct` 三件套）+ 行为面（探针喂错类型 → `applied=0` + `expected <type>`）。三面一致才算解出；本轮三个结构体全部三面一致。
+- **两条新边界**：① 推翻自己上一轮结论时先查那一轮的底物还在不在——「全可选 ⇒ missing field 无效」的推理是对的，但据此把可解问题写成「原理上探不到」是错的；② 负对照（`ZZZ_unknown`）在底物坏时会与真字段一样返回成功，于是「负对照通过」不再证明判别力在线，必须与正对照同轮跑。
 
 ## 6. 结论与边界
 
