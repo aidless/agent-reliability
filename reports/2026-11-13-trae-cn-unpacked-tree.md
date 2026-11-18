@@ -553,7 +553,7 @@ size 完全一致: 5812/6454    （差的 642 个偏大 1–15 B，相邻函数�
 
 **复算入口**：见证据卡 §10 的只读命令清单。
 
-### §5.8.19 第十七轮收口：owner 身份链 / 跳表定界 / 协议协商
+### 5.8.19 第十七轮收口：owner 身份链 / 跳表定界 / 协议协商
 
 **A. `session owner` = `CommandRequest.session_id`（proto field 4）**。wire-type 错法确认 `CommandRequest` 四字段：`1=command_id`/`2=args`/`3=binary`/`4=session_id`。任意非空 `session_id` 通过校验；`listOwned` 的 `ListOwnedExecutionsRequest` required = `limit`→`maxOutputBytes`。`commandExecution.start` + `poll` + `stop` + `listOwned` 全链跑通，host 目标真执行 `id` 得到 `uid=1000(liuzewen)`；`poll` 的 `PollExecutionRequest` 四字段全必填（`executionId`/`maxOutputBytes`/`outputOffset`/`waitTimeoutMs`）。跨 owner `poll`/`stop` 一律 `TOOL_EXECUTION_FAILED`，`listOwned` 换 owner 得空数组 ⇒ owner 是「字符串前缀 + 进程内 registry」隔离。
 
@@ -576,4 +576,27 @@ inner 6 项全部解出：`""`/`""`/`non_zero_exit`(13)/`stopped`(7)/`execution_
 
 **边界三条**：(1) 长链路 A/B 先验证前半段产物非空，否则「缺席」不是「语义」；(2) 无上界跳表靠邻表基址定长，不能靠「指针指向合法代码」；(3) `lea` 表的函数列在 `.rodata` 密集区退化成邻居聚合。
 
-**本轮没做（更新）**：trace `RST_STREAM` 下层原因；`0x7c4bf30`(5 项)/`0x7c4df00`(32 项) 两张表的语义；`0x2e861c0` 的 disc 10/11 两个越界 arm；真 Electron 宿主 `aha-rpc` 内部填表。
+**本轮没做（更新）**：trace `RST_STREAM` 下层原因（已在 §5.8.20 完成，归因为解码失败后的对端复位）；`0x7c4bf30`(5 项)/`0x7c4df00`(32 项) 两张表的语义；`0x2e861c0` 的 disc 10/11 两个越界 arm；真 Electron 宿主 `aha-rpc` 内部填表。
+
+### 5.8.20 C1 收口：`RST_STREAM` 的归因是解码失败，不是帧格式
+
+**结论**：`metrics` 是 `map<string,double>`，wire 形态必须是 **map entry**（field7 + wire type 2，子消息 `{1: key(string), 2: value(fixed64)}`）；给 field7 裸 fixed64（wire type 1）时 prost 把 8 字节当子消息体解析，首字节 `0x00` ⇒ `invalid tag value: 0` ⇒ 解码失败 ⇒ harness 复位该流。**`RST_STREAM` 是 harness 对解码失败的处置，不是我方 HTTP/2 帧格式问题。**
+
+三组 AB 侧（`/tmp/hst/probe_grpc15` + `EVN2`/`IMPL_V`，每轮 12 次 push / 16 s）：
+
+| run | pmode | field6 | field7 | RST | recvFail | 解码 |
+|---|---|---|---|---|---|---|
+| `p16` | 16 | 缺 | 裸 fixed64 `1.5` | 6 | 6 | 失败 |
+| `p17` | 17 | 缺 | 裸 fixed64 `42.0` | 6 | 6 | 失败 |
+| `p14` | 14 | 合法 entry | 裸 fixed64 `1.5` | 6 | 6 | 失败 |
+| `p15` | 15 | 两个合法 entry | 两个裸 fixed64 | 6 | 6 | 失败 |
+| `p12` | 12 | 合法 entry | 缺 | 0 | 0 | 成功 |
+| `p18` | 18 | 缺 | 合法 entry | 0 | 0 | 成功 |
+| `p19` | 19 | 合法 entry | 合法 entry | 0 | 0 | 成功 |
+| `p20` | 20 | 合法 entry | 合法 entry | 0 | 0 | 成功 |
+
+`recvFail == RST` 在 8 例中逐例相等。`p12`（只 field6 合法）与 `p18`（只 field7 合法）各自单独成立，排除了「多字段共存导致失败」这一替代解释。失败原文固定为 `sandbox trace stream receive failed error=tool: sandbox-trace-stream: failed to decode Protobuf message: invalid tag value: 0`，与 `[h2] RST_STREAM sid=1` 一一配对。
+
+**副产品**：`p19`/`p20` 成功解码后 `scope is unavailable` 仍回来 4 次（count=1/2/4/8），`execution_id=exec1`（`p18` 是 `S1`）——事件被完整解码、字段归属正确，只是 scope 未注册。这与 §5.8.13 的语义一致：接收侧不校验，decoded 后先丢。
+
+**边界新增一条**：给 map 字段喂标量时，报错发生在**内层子消息解析**（`invalid tag value: 0`），不是 wire type 错——所以不能靠「报错文案里有 wire type」判断字段是 scalar 还是 map。
