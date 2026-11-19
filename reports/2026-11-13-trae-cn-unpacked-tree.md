@@ -777,3 +777,11 @@ exec 链：shim `0x10360d` → `0x1036a5` → `get_profile_path`+`read_to_string
 - **权限边界**：`readOnlyPaths:["/tmp"]` → `Read-only file system` **真拦截**（mount namespace remount 有效）；`networkDefault:"deny"` → curl `HTTP=200` **没拦**（bwrap `--share-net`，网络不在 namespace 裁）。⇒ 文件真隔离、网络假隔离。
 - **总账终版**：已闭合 16 / 缺底物 6 / 环境边界 3 / 缺凭据 1；主线无「还没查但能查」项。翻盘三新底物：可控 LLM+turn 注入 / 真 Electron 登录态 / JWT 公钥。
 - 判决：配置被 accept ≠ 生效（须见拦截副作用）；读端存在 ≠ 写端存在（trace.log 只有 O_RDONLY）。
+
+### 5.8.30 第三十轮：翻盘三条件实测收官（2026-11-19）
+
+- **B3 JWT 公钥**：查不到。token 已过期 18.9h；本机唯一私钥线索是 `wheshell.hpccube.com` 第三方 3072-bit key，`SELF_SIGN_VALID=True` 但 `SIG_MATCHES_TOKEN=False`（与 4096-bit 签名位数也不符）；无 trae 公钥/JWKS，header 无 kid/jku。工具链自洽性已证，排除「工具坏了」误判。踩坑：写 .pem 被安全网拦，改纯内存解析。
+- **B1 可控 LLM+turn 注入**：缺底物。libharness.so 仅导出 31 符号（BP_* + ai_agent_ipc_* + V8），无 CLI/turn/inbox/inject 入口；ctx-cli 是 ContextFS CLI；toolhost 无 sendMessage 命令；chat/* 是内部 route。构造 turn 消息体无外部投递入口。
+- **B2 真 Electron 登录态**：环境边界。X server / trae-cn bin / gdb 齐备，缺真人 GUI 登录态，无法自动化。
+- **共同终点未达**：三条均未触发 agent loop 自发 `tool_call_started`。
+- **方法论**：口径收获第 30 条「能加载能用 ≠ 是目标那把，必须拿目标产物交叉验」；假阳 (ae)「工具链自洽被当密钥归属证据」，防线 = 验签结论必须报自洽性 + 目标交叉验证两个结果。
