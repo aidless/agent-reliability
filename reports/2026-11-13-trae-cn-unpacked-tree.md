@@ -785,3 +785,14 @@ exec 链：shim `0x10360d` → `0x1036a5` → `get_profile_path`+`read_to_string
 - **B2 真 Electron 登录态**：环境边界。X server / trae-cn bin / gdb 齐备，缺真人 GUI 登录态，无法自动化。
 - **共同终点未达**：三条均未触发 agent loop 自发 `tool_call_started`。
 - **方法论**：口径收获第 30 条「能加载能用 ≠ 是目标那把，必须拿目标产物交叉验」；假阳 (ae)「工具链自洽被当密钥归属证据」，防线 = 验签结论必须报自洽性 + 目标交叉验证两个结果。
+
+### 5.8.31 第三十一轮：资产化收官 —— 多评委复核 + skill 能力基线（2026-11-19）
+
+用户 m08391「全做」。把 30 轮逆向成果固化成可复用资产，非新增协议结论。
+
+- **三评委复核 16/16 PASS**：`review-workflow` Step1–Step5 全跑；bundle 16 事实（协议结构 5 / 工具链 6 / 二进制通道 5），三无上下文评委逐条打开出处核实，零 FAIL。聚合 `evidence/2026-11-19-multi-review/aggregate.md` 39 行 / `d076788df4415c6c`。C2 双表逐槽 mismatches=0；C5 位数必要条件反证 JWT 归属。
+- **两处真瑕疵订正**：结论卡:19 `libai_agent.so` 角色从「表提供方」改为「请求/调用方，填表方 trae-cn 经 FFI 暴露」（`528cc42c3079`）；surface:937 §18.10 从「签名⇒客户端无私钥」改为「只说明模长，不推断私钥位置」（`53ee6bf7cd0f`）。其余 11 处为引用分节偏差/口径标注，事实不变。
+- **复跑脚本**：`evidence/2026-11-18-probe-archive/` 加 `reproduce.sh` + `fwd_archive.py` + `verify_jwt2.py`，FWD_OUT 16 B 真重出（sha `d415294981b62f74`），JWT 无 PRIV 正确 NOT_ASSESSED 不补造。
+- **skill 能力基线（TDD）**：RED 基线 `baseline.md` 72 行 / `95434f5b45f3` — 无 skill 子代理自己答对双表左移/stride/A-B 三问且更严谨（CLIENT[32] 边界、dump stride≠内存 stride）⇒ RED=PASS。按 writing-skills 纪律无失败基线则不做教学式扩面，只补 `native-binary-recon/SKILL.md` 三条 reference 纪律（双表左移 k=0..30 可确认范围 / 表项宽度去 `.rela.dyn` 找 `r_offset` 步长 / A/B 底物可执行判据 + 失败解析日志是失效信号），147→151 行 / `ddcc33f0c282`。
+- **方法论**：口径收获第 32 条「能力基线 PASS 则不做教学式扩面，只做 evidence-driven reference 增强 + 新变体验证」；假阳 (ag)「skill 文档覆盖率被当成能力证据」，防线 = RED 基线先测自然行为。
+- **判决**：本项目维持封存；本轮无新协议结论，产出全部是复用资产（多评委证据、订正、复跑脚本、skill reference）。GREEN 新变体验证结果见 surface §45 补记。
