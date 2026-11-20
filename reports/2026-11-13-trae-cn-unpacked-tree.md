@@ -795,4 +795,5 @@ exec 链：shim `0x10360d` → `0x1036a5` → `get_profile_path`+`read_to_string
 - **复跑脚本**：`evidence/2026-11-18-probe-archive/` 加 `reproduce.sh` + `fwd_archive.py` + `verify_jwt2.py`，FWD_OUT 16 B 真重出（sha `d415294981b62f74`），JWT 无 PRIV 正确 NOT_ASSESSED 不补造。
 - **skill 能力基线（TDD）**：RED 基线 `baseline.md` 72 行 / `95434f5b45f3` — 无 skill 子代理自己答对双表左移/stride/A-B 三问且更严谨（CLIENT[32] 边界、dump stride≠内存 stride）⇒ RED=PASS。按 writing-skills 纪律无失败基线则不做教学式扩面，只补 `native-binary-recon/SKILL.md` 三条 reference 纪律（双表左移 k=0..30 可确认范围 / 表项宽度去 `.rela.dyn` 找 `r_offset` 步长 / A/B 底物可执行判据 + 失败解析日志是失效信号），147→151 行 / `ddcc33f0c282`。
 - **方法论**：口径收获第 32 条「能力基线 PASS 则不做教学式扩面，只做 evidence-driven reference 增强 + 新变体验证」；假阳 (ag)「skill 文档覆盖率被当成能力证据」，防线 = RED 基线先测自然行为。
-- **判决**：本项目维持封存；本轮无新协议结论，产出全部是复用资产（多评委证据、订正、复跑脚本、skill reference）。GREEN 新变体验证结果见 surface §45 补记。
+- **GREEN 新变体验证（已完成）**：新串 `invalid builtin Skill capabilities` 真实 lea 站点 = 1 个 `0xaca6bc1`（目标 VA−1=`0x126264c`，带 `$` 前缀；重叠伪站点 `0xaca6bc2` 剔除；FDE `0xaca66a4`/size `0x7c8`）。子代理正式 `green.md` 141 行 / `4d476f2da899a519`。我回收脚本自跑曾得「站点=0」是假阴性（只匹配串首 VA `0x126264d`，漏前缀 `0x126264c`），两份 libharness.so 哈希相同（`6d75473a…`）排除底物差异后定点反汇编订正，详见 surface §45.6。新增假阳 (ah)「串首 VA≠lea 目标 VA，精确匹配漏引用」；GREEN 反馈回补 skill §1，SKILL.md 151→153 行 / `30c08725b511`。
+- **判决**：本项目维持封存；本轮无新协议结论，产出全部是复用资产（多评委证据、订正、复跑脚本、skill reference）。
