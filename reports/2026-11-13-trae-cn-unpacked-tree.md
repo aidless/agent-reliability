@@ -797,4 +797,5 @@ exec 链：shim `0x10360d` → `0x1036a5` → `get_profile_path`+`read_to_string
 - **方法论**：口径收获第 32 条「能力基线 PASS 则不做教学式扩面，只做 evidence-driven reference 增强 + 新变体验证」；假阳 (ag)「skill 文档覆盖率被当成能力证据」，防线 = RED 基线先测自然行为。
 - **GREEN 新变体验证（已完成）**：新串 `invalid builtin Skill capabilities` 真实 lea 站点 = 1 个 `0xaca6bc1`（目标 VA−1=`0x126264c`，带 `$` 前缀；重叠伪站点 `0xaca6bc2` 剔除；FDE `0xaca66a4`/size `0x7c8`）。子代理正式 `green.md` 141 行 / `4d476f2da899a519`。我回收脚本自跑曾得「站点=0」是假阴性（只匹配串首 VA `0x126264d`，漏前缀 `0x126264c`），两份 libharness.so 哈希相同（`6d75473a…`）排除底物差异后定点反汇编订正，详见 surface §45.6。新增假阳 (ah)「串首 VA≠lea 目标 VA，精确匹配漏引用」；GREEN 反馈回补 skill §1，SKILL.md 151→153 行 / `30c08725b511`。
 - **VA 偏移系统性普查**：GREEN 订正后，用 `{VA,VA−1,VA−2}` 目标集合对 6 个关键串重扫（`evidence/2026-11-19-vaoffset-rescan/findings.md` 22 行 / `dae4e49581369324`）——只有 `invalid builtin Skill capabilities` 命中 VA−1，其余 5 个走 VA+0 或全 0（间接引用），无旧结论被同类假阴性污染。推广教训：修完一个具体错误后要用同手法扫全网查同类，再收手。
-- **判决**：本项目维持封存；本轮无新协议结论，产出全部是复用资产（多评委证据、订正、复跑脚本、skill reference）。
+- **外部底物三路探测（用户「全做」主动获取）**：B3 找 trae JWKS 端点只命中无关串 ⇒ 查不到；B1 本机有 ollama（qwen3:8b 等）+ openrouter URL 但 generate 三次全超时 HTTP=000，且真正瓶颈是 turn 注入入口（libharness.so 无 CLI/inbox）与 LLM 无关 ⇒ 维持缺底物；B2 X0 在但无窗口工具/无 trae 进程/无登录态文件 ⇒ 环境边界。三路均未取到可用翻盘底物。
+- **判决**：本项目**正式封存**。16 项协议结论经三道独立验证（单复核 5/5 + 三评委 16/16 + VA 偏移普查）坐实，剩余 10 项全在缺底物/环境边界/缺凭据三档，无「还没查但能查」项。封存说明 `reports/PROJECT-CLOSURE.md`；启动条件见其「翻盘触发条件」。
