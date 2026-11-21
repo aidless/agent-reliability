@@ -828,3 +828,12 @@ exec 链：shim `0x10360d` → `0x1036a5` → `get_profile_path`+`read_to_string
 **总账**（承接 5.8.32 的 17/5/2/1）：缺凭据 1→0，B3 入已闭合-结构性死底物。最终已闭合 18 / 缺底物 5 / 环境边界 2 / 缺凭据 0。主线无「还没查但能查」项。
 
 详见 surface §48 / OWNER §49 / PROJECT-CLOSURE 第六节补记。
+
+### 5.8.34 阶段 0 假 cloud 实测：双 cloud client 分流（2026-11-20）
+- 新任务：AMD Radeon Cloud 实例（gfx1100/48GB VRAM/ROCm7.2.1，剩 2天23h）。阶段 0 不耗 GPU：假 cloud + HARNESS_CLOUD_URL 抓 create_agent_task schema。
+- HARNESS_CLOUD_URL 在 libharness.so 命中 2 处（harness Rust 侧认），`*_API_BASE`（LLM/ANSWER/OPEN/SC/JUDGE）全 0（Node 侧另读）。
+- env 注入 + SIGKILL 重启 trae（SIGTERM 被 systemd 忽略）后假 cloud 收 102 行、唯一路径 `POST /api/ide/v1/batch_get_detail_param`（body 185 B：functions/agent_type/current_config_info/mode_type/access_type），抓到完整头（User-Agent TraeClient/TTNet、x-harness:1、x-app-id、x-bridge-transport aha、x-device-cpu AMD、Cloud-IDE-JWT）。
+- `create_agent_task` 不读该 env：GUI 发消息报 `系统未知错误(10000000)`、假 cloud 日志不增；来源是 Node ai-server 进程（PID 783744）→ Akamai（2.22.61.11:443）TLS，strace 无明文 ⇒ 阶段 0 只覆盖 harness 侧，目标部分达成。
+- 本机 ollama qwen3:8b 在 11434 但 trae 未连接 ⇒ 路径 A 那次成功 tool call 走真 cloud；阶段 1 换本地 LLM 需改 Node 侧端点/适配器，不在 harness env 范围。
+- 三边界：①单 env 只覆盖读它的 client；②TLS 挡明文抓不到 create_agent_task schema；③SIGTERM 杀不掉 systemd --user 管理的 trae（ppid=1571），pkill -f 会匹配 bash 自身致自杀，须按端口/精确名 -x。
+- 详见 surface §49 / OWNER §50。
