@@ -799,3 +799,13 @@ exec 链：shim `0x10360d` → `0x1036a5` → `get_profile_path`+`read_to_string
 - **VA 偏移系统性普查**：GREEN 订正后，用 `{VA,VA−1,VA−2}` 目标集合对 6 个关键串重扫（`evidence/2026-11-19-vaoffset-rescan/findings.md` 22 行 / `dae4e49581369324`）——只有 `invalid builtin Skill capabilities` 命中 VA−1，其余 5 个走 VA+0 或全 0（间接引用），无旧结论被同类假阴性污染。推广教训：修完一个具体错误后要用同手法扫全网查同类，再收手。
 - **外部底物三路探测（用户「全做」主动获取）**：B3 找 trae JWKS 端点只命中无关串 ⇒ 查不到；B1 本机有 ollama（qwen3:8b 等）+ openrouter URL 但 generate 三次全超时 HTTP=000，且真正瓶颈是 turn 注入入口（libharness.so 无 CLI/inbox）与 LLM 无关 ⇒ 维持缺底物；B2 X0 在但无窗口工具/无 trae 进程/无登录态文件 ⇒ 环境边界。三路均未取到可用翻盘底物。
 - **判决**：本项目**正式封存**。16 项协议结论经三道独立验证（单复核 5/5 + 三评委 16/16 + VA 偏移普查）坐实，剩余 10 项全在缺底物/环境边界/缺凭据三档，无「还没查但能查」项。封存说明 `reports/PROJECT-CLOSURE.md`；启动条件见其「翻盘触发条件」。
+
+### 5.8.32 封存撤销：真 Electron GUI 实时抓到 agent loop 工具调用（2026-11-20）
+
+§5.8.27 的封存（B2 真 Electron=死边界）被实测推翻。在真 trae-cn GUI 发一条 `list files in /tmp using terminal`，agent 19 秒内真实调用终端列出 /tmp（UI 返回真实文件列表 + `command-execution/32cf…/output.log` 802,422 B + turn tag `before@20:14:25 → after@20:14:44` 时间链三处印证）。翻盘判据 `tool_call_started/finished` 在真宿主、实时、可复算达成。
+
+- 底物三变化：trae 有效登录态（重启自动刷 token，exp 剩 7 天）；历史 5,166 toolcall tag 证明 agent loop 本就能跑；桌面输入通路 XTest/libXtst + cu_shot 可用（封存时只查 xdotool/wmctrl 漏判）。
+- 绕法：主窗口 Iconic + WM 拒 EWMH 激活 ⇒ 重启 trae 使其 Normal 启动，再用 XTest 点输入框 + 输入 + Return。
+- 边界：toolcall tag 总数未增（新增工具调用走 command-execution 非 snapshot tag 路径，不影响判决）；token 3 分钟窗口未再刷（7 天周期正常）。
+- 总账：B2 从环境边界移入已闭合；剩余 B3 JWT 验签（缺公钥）、B1 turn 程序化构造（缺底物，手动 GUI 已证明可触发）、trace 两端接口不齐（确定结论）。
+- 详证见 `/home/liuzewen/rea-work-20261108/reports/2026-11-16-harness-crate-surface.md` §47。
