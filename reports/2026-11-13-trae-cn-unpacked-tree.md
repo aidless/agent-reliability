@@ -843,3 +843,14 @@ exec 链：shim `0x10360d` → `0x1036a5` → `get_profile_path`+`read_to_string
 - 两次抓明文均失败：①`NODE_OPTIONS=--require` preload 只进主进程，ai-server 子进程被 Electron 过滤 env；②docker privileged 覆盖磁盘 dispatcher 成功（sha 一致）但模块顶层日志零行 ⇒ 进程实际加载 bundle 内联副本，不是磁盘文件。按收敛纪律收手，原文件已恢复（sha256 eefc94c7…）。
 - **正面收获**：XTest 注入 GUI 消息真触发完整 agent loop + 工具调用——`command-execution/75031091757ee0fd295a8b8938750262/execution.json`（createdAtMs=1795244733381、exitCode=0、cwd=/tmp）+ snapshot `before/after-chat-turn-*` 成对 tag 双证据。推翻 §5.8.28–30「turn 注入缺底物」判决：底物一直可用，之前是抓包手段没覆盖 Node 侧通道。
 - 三边界：hook 顶层日志零行=模块没被 require（先验底物）；Electron 子进程过滤 NODE_OPTIONS；覆盖磁盘 JS ≠ 覆盖进程加载模块。详见 surface §50 / OWNER §51。
+
+### 5.8.36 第 3 实验收官：create_agent_task schema 判环境边界（2026-11-21）
+
+承接 §5.8.35「schema 明文两次抓取失败」，第 3 实验改走**网络边界层**（前两次均为进程内手段，正交）。结论：**schema 维持环境边界（收敛性查不到）**，三条独立通道全部排除。
+
+- **ZMQ 路径不存在**：全 trae env 无 `TRAE_NET_ZMQ_ENDPOINT`；设置点在 main.js `if(u)`（Remote SSH Harness 分支）内，本机非 remote ⇒ §5.8.35 记的「ZMQ bodyBuf 明文抓取点」是远程分支专属，本机不成立。
+- **真实出口**：ai-server（crash-reporter-process-type=ai-server）→ `2.22.61.11:443`（Akamai）TLS 直连；另有 127.0.0.1:7897 HTTP 代理（他用户监听）。
+- **MITM 三障碍**：①`NODE_EXTRA_CA_CERTS`/`NODE_TLS_REJECT_UNAUTHORIZED` main.js 0 命中且不在 T_ 白名单 ⇒ CA 进不了 ai-server；②无 root（sudo 需密码）⇒ 无法 iptables 重定向；③TLS 直连需同时解①②。
+- **三个注入旋钮全是死变量**：`ICUBE_PROXY_HOST`（仅赋值 `r?hy:py`，无消费点）、`TRAE_NETWORK_SERVICE_CONFIG_PATH`（5 bundle 命中全是 T_ 白名单过滤函数，无读取逻辑）、`NODE_EXTRA_CA_CERTS`（0 命中）。白名单保留键 ≠ 程序会读它——判注入可行必须找 `process.env.X` 消费点。
+- **正面收获：inbox turn 消息 11 字段**。`~/.config/Trae CN/ModularData/ai-agent/inbox/<id>/{next,later}/messages.jsonl`：`schema_version`/`message_id`/`source_event_id`/`source_chat_session_id`/`target_chat_session_id`/`priority`(next|later)/`enters_context`/`triggers_agent`/`as_user_message`/`created_at_ms`/`acknowledged_at_ms`/`digest`。`priority=next`+`triggers_agent=true` 为触发 turn 的信封；正文 content 不在该层。这是程序化 turn 注入的信封格式，比未拿到的 schema 更可用。
+- **口径收获**：第 N 次实验必须先写清前 N−1 次各排除了什么、本次是否正交；白名单透传清单不是注入点证据。详见 surface §51 / OWNER §52。
