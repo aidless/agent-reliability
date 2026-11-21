@@ -837,3 +837,9 @@ exec 链：shim `0x10360d` → `0x1036a5` → `get_profile_path`+`read_to_string
 - 本机 ollama qwen3:8b 在 11434 但 trae 未连接 ⇒ 路径 A 那次成功 tool call 走真 cloud；阶段 1 换本地 LLM 需改 Node 侧端点/适配器，不在 harness env 范围。
 - 三边界：①单 env 只覆盖读它的 client；②TLS 挡明文抓不到 create_agent_task schema；③SIGTERM 杀不掉 systemd --user 管理的 trae（ppid=1571），pkill -f 会匹配 bash 自身致自杀，须按端口/精确名 -x。
 - 详见 surface §49 / OWNER §50。
+
+### 5.8.35 阶段 1 收敛版：turn 注入底物坐实 + schema 抓取两败（2026-11-21）
+- `create_agent_task` 真实 path = `api/cue_agent/v3/create_agent_task`（cueMain.js，`Agent.AIGot`，SSE 流）；域名来自 `dynamicDomain = BootConfig.cue.domain`（`onBootConfigChanged` 订阅）；网络走 `TRAE_NET_ZMQ_ENDPOINT` 的 ZMQ（`ZmqDispatcher.dispatch()` 里 bodyBuf 是明文）+ Node ai-server → Akamai TLS 双通道。
+- 两次抓明文均失败：①`NODE_OPTIONS=--require` preload 只进主进程，ai-server 子进程被 Electron 过滤 env；②docker privileged 覆盖磁盘 dispatcher 成功（sha 一致）但模块顶层日志零行 ⇒ 进程实际加载 bundle 内联副本，不是磁盘文件。按收敛纪律收手，原文件已恢复（sha256 eefc94c7…）。
+- **正面收获**：XTest 注入 GUI 消息真触发完整 agent loop + 工具调用——`command-execution/75031091757ee0fd295a8b8938750262/execution.json`（createdAtMs=1795244733381、exitCode=0、cwd=/tmp）+ snapshot `before/after-chat-turn-*` 成对 tag 双证据。推翻 §5.8.28–30「turn 注入缺底物」判决：底物一直可用，之前是抓包手段没覆盖 Node 侧通道。
+- 三边界：hook 顶层日志零行=模块没被 require（先验底物）；Electron 子进程过滤 NODE_OPTIONS；覆盖磁盘 JS ≠ 覆盖进程加载模块。详见 surface §50 / OWNER §51。
