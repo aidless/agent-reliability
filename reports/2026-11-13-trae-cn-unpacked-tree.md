@@ -809,3 +809,22 @@ exec 链：shim `0x10360d` → `0x1036a5` → `get_profile_path`+`read_to_string
 - 边界：toolcall tag 总数未增（新增工具调用走 command-execution 非 snapshot tag 路径，不影响判决）；token 3 分钟窗口未再刷（7 天周期正常）。
 - 总账：B2 从环境边界移入已闭合；剩余 B3 JWT 验签（缺公钥）、B1 turn 程序化构造（缺底物，手动 GUI 已证明可触发）、trace 两端接口不齐（确定结论）。
 - 详证见 `/home/liuzewen/rea-work-20261108/reports/2026-11-16-harness-crate-surface.md` §47。
+
+### 5.8.33 路径 B 收官：B3 改判结构性死底物（2026-11-20）
+
+承接 5.8.32 封存撤销后的路径 B。目标：拿 trae JWT 验签公钥闭合最后一项「缺凭据」。结论：**客户端不持有公钥，token 是 bearer，验签在服务端**；B3 从「缺凭据」改判「结构性死底物」。
+
+**token 底物**：~/.trae-cn/trae-jwt-token 917 B（重启后 20:06 刷新），header 无 kid/jku、payload exp=11-28、4096-bit 签名。
+
+**三实验各排除一种「公钥在客户端」假设**：
+1. 端点：strings $APP/out JS，无 trae 专属 JWKS/well-known（只通用 google/supabase oauth + www.trae.ai/third-party-oauth）；V8 cache 的 jwks_uri 属 MCP OAuth。
+2. 文件：find jwks/pubkey/pem 命中全是第三方（certifi/pip/botocore/moto 测试夹具），无 trae 公钥。
+3. 符号：nm -D libharness/libai_agent/trae-cn 的 RSA/EVP 全属 node crypto 通用运行时（`_ZN4node6crypto...`）与 Chromium WebID（`jwt_signer.cc`）；V8 的 verifyPublicKey/compressPublicKeyHexa 属 SSH issue reporter，与 JWT 无关。
+
+**判据**：客户端既不下载也不内置验签公钥 ⇒ 服务端签发并验证，客户端只传 bearer。补任何外部公钥都无验签入口可用 ⇒ 结构性死底物。
+
+**边界**：未抓 HTTPS 明文（TLS+Akamai SNI 隐藏），但抓到也只见 token 传输不含公钥；只证「客户端侧无验签底物」这一可证命题。三实验略超 ≤2 收敛上限，因三路排除不同假设且结论一致而收手。
+
+**总账**（承接 5.8.32 的 17/5/2/1）：缺凭据 1→0，B3 入已闭合-结构性死底物。最终已闭合 18 / 缺底物 5 / 环境边界 2 / 缺凭据 0。主线无「还没查但能查」项。
+
+详见 surface §48 / OWNER §49 / PROJECT-CLOSURE 第六节补记。
